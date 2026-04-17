@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline } from 'react-leaflet'
 import { LatLng, Icon } from 'leaflet'
 import type { PhotoData } from '../App'
+import { API_BASE } from '../config'
 
 interface GameViewProps {
   photo: PhotoData
@@ -103,7 +104,7 @@ export default function GameView({ photo, onBack }: GameViewProps) {
     setSubmitting(true)
 
     try {
-      const response = await fetch(`/api/photos/${photo.id}/guess`, {
+      const response = await fetch(`${API_BASE}/api/photos/${photo.id}/guess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

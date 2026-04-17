@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import MainMenu from './components/MainMenu'
 import GameView from './components/GameView'
+import { API_BASE } from './config'
 
 export type GameState = 'menu' | 'playing'
 
@@ -15,7 +16,7 @@ function App() {
 
   const handlePlay = async () => {
     try {
-      const response = await fetch('/api/photos/random')
+      const response = await fetch(`${API_BASE}/api/photos/random`)
       if (!response.ok) throw new Error('No photos available')
       const data: PhotoData = await response.json()
       setCurrentPhoto(data)

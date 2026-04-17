@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { API_BASE } from '../config'
 
 interface MainMenuProps {
   onPlay: () => void
@@ -33,7 +34,7 @@ export default function MainMenu({ onPlay }: MainMenuProps) {
         const formData = new FormData()
         formData.append('photo', file)
 
-        const response = await fetch('/api/photos', {
+        const response = await fetch(`${API_BASE}/api/photos`, {
           method: 'POST',
           body: formData,
         })
