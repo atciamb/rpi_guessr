@@ -7,6 +7,7 @@ import { API_BASE } from '../config'
 interface GameViewProps {
   photo: PhotoData
   onBack: () => void
+  onPlayAgain: () => void
 }
 
 interface GuessResult {
@@ -83,11 +84,17 @@ function FitBoundsHandler({ guess, actual }: { guess: LatLng | null; actual: Lat
   return null
 }
 
-export default function GameView({ photo, onBack }: GameViewProps) {
+export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) {
   const [guess, setGuess] = useState<LatLng | null>(null)
   const [mapHovered, setMapHovered] = useState(false)
   const [result, setResult] = useState<GuessResult | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    setGuess(null)
+    setResult(null)
+    setMapHovered(false)
+  }, [photo])
 
   const handleMapClick = (latlng: LatLng) => {
     if (!result) {
@@ -158,7 +165,7 @@ export default function GameView({ photo, onBack }: GameViewProps) {
             {formatDistance(result.distance_km)} away
           </p>
           <button
-            onClick={onBack}
+            onClick={onPlayAgain}
             className="mt-3 px-6 py-2 bg-red-600 rounded-lg hover:bg-red-500 font-medium"
           >
             Play Again
@@ -179,14 +186,14 @@ export default function GameView({ photo, onBack }: GameViewProps) {
       <div
         onMouseEnter={() => setMapHovered(true)}
         onMouseLeave={() => !result && setMapHovered(false)}
-        className="absolute bottom-4 right-4 z-40 flex flex-col items-center gap-2"
+        className="absolute bottom-4 right-4 z-40 flex flex-col gap-2"
       >
         {/* Guess button - below map */}
         {!result && (
           <button
             onClick={handleGuess}
             disabled={!guess || submitting}
-            className="order-2 px-8 py-3 bg-red-600 text-white font-bold rounded-lg
+            className="order-2 w-full py-3 bg-red-600 text-white font-bold rounded-lg
                        hover:bg-red-500 transition-colors shadow-lg
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
