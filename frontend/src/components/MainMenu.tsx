@@ -4,41 +4,70 @@ interface MainMenuProps {
   onPlay: () => void
 }
 
+interface UploadProgress {
+  current: number
+  total: number
+  succeeded: number
+  failed: string[]
+}
+
 export default function MainMenu({ onPlay }: MainMenuProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState<UploadProgress | null>(null)
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
-    setUploading(true)
+    const total = files.length
+    setProgress({ current: 0, total, succeeded: 0, failed: [] })
 
-    try {
-      const formData = new FormData()
-      formData.append('photo', file)
+    let succeeded = 0
+    const failed: string[] = []
 
-      const response = await fetch('/api/photos', {
-        method: 'POST',
-        body: formData,
-      })
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setProgress(prev => prev ? { ...prev, current: i + 1 } : null)
 
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Upload failed')
+      try {
+        const formData = new FormData()
+        formData.append('photo', file)
+
+        const response = await fetch('/api/photos', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Upload failed')
+        }
+
+        succeeded++
+      } catch (error) {
+        console.error(`Upload failed for ${file.name}:`, error)
+        const reason = error instanceof Error ? error.message : 'Unknown error'
+        failed.push(`${file.name}: ${reason}`)
       }
 
-      alert('Photo uploaded successfully!')
-    } catch (error) {
-      console.error('Upload failed:', error)
-      alert(error instanceof Error ? error.message : 'Failed to upload photo')
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
+      setProgress(prev => prev ? { ...prev, succeeded, failed } : null)
+    }
+
+    if (failed.length === 0) {
+      alert(`Successfully uploaded ${succeeded} photo${succeeded !== 1 ? 's' : ''}!`)
+    } else {
+      alert(
+        `Uploaded ${succeeded}/${total} photos.\n\nFailed:\n${failed.join('\n')}`
+      )
+    }
+
+    setProgress(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
+
+  const uploading = progress !== null
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-8">
@@ -60,6 +89,7 @@ export default function MainMenu({ onPlay }: MainMenuProps) {
           ref={fileInputRef}
           type="file"
           accept=".jpg,.jpeg,.png,.webp"
+          multiple
           onChange={handleUpload}
           disabled={uploading}
           className="hidden"
@@ -67,12 +97,14 @@ export default function MainMenu({ onPlay }: MainMenuProps) {
         <span className={`px-8 py-3 text-lg font-medium text-red-400 border-2 border-red-600
                         rounded-lg hover:bg-red-600/20 transition-all duration-200 inline-block
                         ${uploading ? 'opacity-50 cursor-wait' : ''}`}>
-          {uploading ? 'Uploading...' : 'Upload Photo'}
+          {progress
+            ? `Uploading ${progress.current}/${progress.total}...`
+            : 'Upload Photos'}
         </span>
       </label>
 
       <p className="text-gray-500 text-sm">
-        JPG, PNG, or WebP with GPS data
+        Select multiple JPG, PNG, or WebP files with GPS data
       </p>
     </div>
   )

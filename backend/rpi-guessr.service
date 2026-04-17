@@ -1,0 +1,24 @@
+[Unit]
+Description=RPI Guessr Backend Server
+After=network.target
+
+[Service]
+Type=simple
+User=rpi-guessr
+Group=rpi-guessr
+WorkingDirectory=/opt/rpi-guessr
+ExecStart=/opt/rpi-guessr/rpi-guessr-server
+Restart=always
+RestartSec=5
+
+# Environment file for production secrets
+EnvironmentFile=/opt/rpi-guessr/.env
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/rpi-guessr
+
+[Install]
+WantedBy=multi-user.target
