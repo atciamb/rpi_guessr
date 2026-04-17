@@ -8,6 +8,7 @@ import (
 	"rpi_guessr/backend/handlers"
 	"rpi_guessr/backend/storage"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,6 +29,13 @@ func main() {
 	photoHandler := handlers.NewPhotoHandler(db, s3Storage)
 
 	r := gin.Default()
+
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"https://rpi.neelema.net", "http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type"},
+		AllowCredentials: true,
+	}))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
