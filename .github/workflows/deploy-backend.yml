@@ -70,6 +70,19 @@ jobs:
           aws s3 cp rpi-guessr.service s3://${{ env.DEPLOY_BUCKET }}/rpi-guessr/rpi-guessr.service
           aws s3 cp init.sql s3://${{ env.DEPLOY_BUCKET }}/rpi-guessr/init.sql
 
+      - name: Create env file
+        run: |
+          cat > /tmp/app.env << 'EOF'
+          DATABASE_URL=${{ env.DATABASE_URL }}
+          S3_BUCKET=${{ env.S3_BUCKET }}
+          S3_REGION=${{ env.AWS_REGION }}
+          AWS_ACCESS_KEY_ID=${{ env.APP_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ env.APP_AWS_SECRET_ACCESS_KEY }}
+          PORT=8080
+          EOF
+          sed -i 's/^[[:space:]]*//' /tmp/app.env
+          aws s3 cp /tmp/app.env s3://${{ env.DEPLOY_BUCKET }}/rpi-guessr/app.env
+
       - name: Deploy via SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
@@ -80,11 +93,11 @@ jobs:
               "aws s3 cp s3://'"${{ env.DEPLOY_BUCKET }}"'/rpi-guessr/rpi-guessr-server /opt/rpi-guessr/rpi-guessr-server",
               "aws s3 cp s3://'"${{ env.DEPLOY_BUCKET }}"'/rpi-guessr/rpi-guessr.service /etc/systemd/system/rpi-guessr.service",
               "aws s3 cp s3://'"${{ env.DEPLOY_BUCKET }}"'/rpi-guessr/init.sql /tmp/init.sql",
+              "aws s3 cp s3://'"${{ env.DEPLOY_BUCKET }}"'/rpi-guessr/app.env /opt/rpi-guessr/.env",
               "chmod +x /opt/rpi-guessr/rpi-guessr-server",
-              "cat > /opt/rpi-guessr/.env << EOF\nDATABASE_URL='"${{ env.DATABASE_URL }}"'\nS3_BUCKET='"${{ env.S3_BUCKET }}"'\nS3_REGION='"${{ env.AWS_REGION }}"'\nAWS_ACCESS_KEY_ID='"${{ env.APP_AWS_ACCESS_KEY_ID }}"'\nAWS_SECRET_ACCESS_KEY='"${{ env.APP_AWS_SECRET_ACCESS_KEY }}"'\nPORT=8080\nEOF",
               "chmod 600 /opt/rpi-guessr/.env",
-              "chown rpi-guessr:rpi-guessr /opt/rpi-guessr/.env",
-              "psql \"'"${{ env.DATABASE_URL }}"'\" -f /tmp/init.sql",
+              "chown rpi-guessr:rpi-guessr /opt/rpi-guessr/.env /opt/rpi-guessr/rpi-guessr-server",
+              "psql \"'"${{ env.DATABASE_URL }}"'\" -f /tmp/init.sql || true",
               "rm /tmp/init.sql",
               "systemctl daemon-reload",
               "systemctl enable rpi-guessr",
