@@ -34,6 +34,7 @@ func main() {
 		api.GET("/photos/random", photoHandler.GetRandomPhoto)
 		api.GET("/photos/:id", photoHandler.GetPhotoInfo)
 		api.POST("/photos", photoHandler.UploadPhoto)
+		api.POST("/photos/:id/guess", photoHandler.SubmitGuess)
 	}
 
 	log.Printf("Server starting on port %s", cfg.Port)

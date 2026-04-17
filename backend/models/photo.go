@@ -32,8 +32,7 @@ type GuessRequest struct {
 }
 
 type GuessResponse struct {
-	DistanceMeters float64 `json:"distance_meters"`
-	Score          int     `json:"score"`
+	DistanceKm     float64 `json:"distance_km"`
 	ActualLocation struct {
 		Longitude float64 `json:"longitude"`
 		Latitude  float64 `json:"latitude"`

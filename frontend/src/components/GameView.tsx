@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline } from 'react-leaflet'
 import { LatLng, Icon } from 'leaflet'
 import type { PhotoData } from '../App'
 
@@ -8,7 +8,15 @@ interface GameViewProps {
   onBack: () => void
 }
 
-const markerIcon = new Icon({
+interface GuessResult {
+  distance_km: number
+  actual_location: {
+    longitude: number
+    latitude: number
+  }
+}
+
+const guessIcon = new Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
@@ -16,10 +24,22 @@ const markerIcon = new Icon({
   iconAnchor: [12, 41],
 })
 
-function MapClickHandler({ onMapClick }: { onMapClick: (latlng: LatLng) => void }) {
+const actualIcon = new Icon({
+  iconUrl: 'data:image/svg+xml,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+      <path fill="#16a34a" d="M12 0C7.58 0 4 3.58 4 8c0 5.25 8 13 8 13s8-7.75 8-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>
+    </svg>
+  `),
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+})
+
+function MapClickHandler({ onMapClick, disabled }: { onMapClick: (latlng: LatLng) => void; disabled: boolean }) {
   useMapEvents({
     click: (e) => {
-      onMapClick(e.latlng)
+      if (!disabled) {
+        onMapClick(e.latlng)
+      }
     },
   })
   return null
@@ -29,12 +49,10 @@ function MapResizeHandler({ expanded }: { expanded: boolean }) {
   const map = useMap()
 
   useEffect(() => {
-    // Small delay to let the CSS transition start
     const timeout = setTimeout(() => {
       map.invalidateSize()
     }, 50)
 
-    // Also invalidate after transition completes
     const timeout2 = setTimeout(() => {
       map.invalidateSize()
     }, 350)
@@ -48,22 +66,76 @@ function MapResizeHandler({ expanded }: { expanded: boolean }) {
   return null
 }
 
+function FitBoundsHandler({ guess, actual }: { guess: LatLng | null; actual: LatLng | null }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (guess && actual) {
+      const bounds = [
+        [guess.lat, guess.lng],
+        [actual.lat, actual.lng],
+      ] as [[number, number], [number, number]]
+      map.fitBounds(bounds, { padding: [50, 50] })
+    }
+  }, [guess, actual, map])
+
+  return null
+}
+
 export default function GameView({ photo, onBack }: GameViewProps) {
   const [guess, setGuess] = useState<LatLng | null>(null)
   const [mapHovered, setMapHovered] = useState(false)
+  const [result, setResult] = useState<GuessResult | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const handleMapClick = (latlng: LatLng) => {
-    setGuess(latlng)
+    if (!result) {
+      setGuess(latlng)
+    }
   }
 
-  const handleGuess = () => {
+  const handleGuess = async () => {
     if (!guess) {
       alert('Click on the map to place your guess first!')
       return
     }
-    // TODO: Implement guess logic
-    console.log('Guessed:', guess.lat, guess.lng)
-    alert(`Guessed: ${guess.lat.toFixed(4)}, ${guess.lng.toFixed(4)}`)
+
+    setSubmitting(true)
+
+    try {
+      const response = await fetch(`/api/photos/${photo.id}/guess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude: guess.lat,
+          longitude: guess.lng,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to submit guess')
+      }
+
+      const data: GuessResult = await response.json()
+      setResult(data)
+      setMapHovered(true) // Expand map to show result
+    } catch (error) {
+      console.error('Guess failed:', error)
+      alert('Failed to submit guess')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const actualLocation = result
+    ? new LatLng(result.actual_location.latitude, result.actual_location.longitude)
+    : null
+
+  const formatDistance = (km: number): string => {
+    if (km < 1) {
+      return `${Math.round(km * 1000)} m`
+    }
+    return `${km.toFixed(1)} km`
   }
 
   return (
@@ -77,6 +149,22 @@ export default function GameView({ photo, onBack }: GameViewProps) {
         ← Back
       </button>
 
+      {/* Result overlay */}
+      {result && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
+                        px-8 py-4 rounded-xl text-center">
+          <p className="text-2xl font-bold text-red-400">
+            {formatDistance(result.distance_km)} away
+          </p>
+          <button
+            onClick={onBack}
+            className="mt-3 px-6 py-2 bg-red-600 rounded-lg hover:bg-red-500 font-medium"
+          >
+            Play Again
+          </button>
+        </div>
+      )}
+
       {/* Photo display - full screen background */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -86,41 +174,60 @@ export default function GameView({ photo, onBack }: GameViewProps) {
       {/* Dark overlay for better contrast */}
       <div className="absolute inset-0 bg-black/20" />
 
-      {/* Map widget - bottom right */}
+      {/* Map and button container - bottom right */}
       <div
         onMouseEnter={() => setMapHovered(true)}
-        onMouseLeave={() => setMapHovered(false)}
-        style={{
-          width: mapHovered ? '50vw' : '200px',
-          height: mapHovered ? '50vh' : '150px',
-        }}
-        className="absolute bottom-4 right-4 z-40 rounded-lg overflow-hidden shadow-2xl
-                   border-2 border-red-600 transition-all duration-300 ease-out"
+        onMouseLeave={() => !result && setMapHovered(false)}
+        className="absolute bottom-4 right-4 z-40 flex flex-col items-center gap-2"
       >
-        <MapContainer
-          center={[42.7302, -73.6788]}
-          zoom={15}
-          className="w-full h-full"
-          zoomControl={false}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapClickHandler onMapClick={handleMapClick} />
-          <MapResizeHandler expanded={mapHovered} />
-          {guess && <Marker position={guess} icon={markerIcon} />}
-        </MapContainer>
+        {/* Guess button - below map */}
+        {!result && (
+          <button
+            onClick={handleGuess}
+            disabled={!guess || submitting}
+            className="order-2 px-8 py-3 bg-red-600 text-white font-bold rounded-lg
+                       hover:bg-red-500 transition-colors shadow-lg
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? 'Submitting...' : 'GUESS'}
+          </button>
+        )}
 
-        {/* Guess button */}
-        <button
-          onClick={handleGuess}
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 z-50 px-6 py-2
-                     bg-red-600 text-white font-bold rounded-lg hover:bg-red-500
-                     transition-colors shadow-lg"
+        {/* Map widget */}
+        <div
+          style={{
+            width: mapHovered ? '35vw' : '200px',
+            height: mapHovered ? '35vh' : '150px',
+          }}
+          className="order-1 rounded-lg overflow-hidden shadow-2xl border-2 border-red-600
+                     transition-all duration-300 ease-out"
         >
-          GUESS
-        </button>
+          <MapContainer
+            center={[42.7302, -73.6788]}
+            zoom={15}
+            className="w-full h-full"
+            zoomControl={false}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
+            <MapResizeHandler expanded={mapHovered} />
+            {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
+
+            {guess && <Marker position={guess} icon={guessIcon} />}
+            {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+            {guess && actualLocation && (
+              <Polyline
+                positions={[guess, actualLocation]}
+                color="#dc2626"
+                weight={3}
+                dashArray="10, 10"
+              />
+            )}
+          </MapContainer>
+        </div>
       </div>
     </div>
   )

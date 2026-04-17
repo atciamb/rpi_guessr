@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"time"
 
@@ -16,6 +17,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/rwcarlsen/goexif/exif"
 )
+
+const earthRadiusKm = 6371.0
+
+func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
+	lat1Rad := lat1 * math.Pi / 180
+	lat2Rad := lat2 * math.Pi / 180
+	deltaLat := (lat2 - lat1) * math.Pi / 180
+	deltaLon := (lon2 - lon1) * math.Pi / 180
+
+	a := math.Sin(deltaLat/2)*math.Sin(deltaLat/2) +
+		math.Cos(lat1Rad)*math.Cos(lat2Rad)*math.Sin(deltaLon/2)*math.Sin(deltaLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+	return earthRadiusKm * c
+}
 
 type PhotoHandler struct {
 	db      *database.PostgresDB
@@ -136,4 +152,33 @@ func (h *PhotoHandler) UploadPhoto(c *gin.Context) {
 		ID:       photoID,
 		PhotoURL: h.storage.GetURL(s3Key),
 	})
+}
+
+func (h *PhotoHandler) SubmitGuess(c *gin.Context) {
+	photoID := c.Param("id")
+
+	var req models.GuessRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	query := `SELECT longitude, latitude FROM photos WHERE id = $1`
+
+	var actualLon, actualLat float64
+	err := h.db.Pool.QueryRow(context.Background(), query, photoID).Scan(&actualLon, &actualLat)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+
+	distanceKm := haversineDistance(req.Latitude, req.Longitude, actualLat, actualLon)
+
+	response := models.GuessResponse{
+		DistanceKm: distanceKm,
+	}
+	response.ActualLocation.Longitude = actualLon
+	response.ActualLocation.Latitude = actualLat
+
+	c.JSON(http.StatusOK, response)
 }
