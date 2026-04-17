@@ -1,0 +1,43 @@
+package main
+
+import (
+	"log"
+
+	"rpi_guessr/backend/config"
+	"rpi_guessr/backend/database"
+	"rpi_guessr/backend/handlers"
+	"rpi_guessr/backend/storage"
+
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	cfg := config.Load()
+
+	db, err := database.Connect(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	s3Storage, err := storage.NewS3Storage(cfg.S3Bucket, cfg.S3Region, cfg.S3Endpoint, cfg.S3PublicEndpoint)
+	if err != nil {
+		log.Fatalf("Failed to initialize S3 storage: %v", err)
+	}
+
+	photoHandler := handlers.NewPhotoHandler(db, s3Storage)
+
+	r := gin.Default()
+
+	api := r.Group("/api")
+	{
+		api.GET("/photos/random", photoHandler.GetRandomPhoto)
+		api.GET("/photos/:id", photoHandler.GetPhotoInfo)
+		api.POST("/photos", photoHandler.UploadPhoto)
+	}
+
+	log.Printf("Server starting on port %s", cfg.Port)
+	if err := r.Run(":" + cfg.Port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+}
