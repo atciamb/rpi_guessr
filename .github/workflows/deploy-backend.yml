@@ -78,7 +78,7 @@ jobs:
           S3_REGION=${{ env.AWS_REGION }}
           AWS_ACCESS_KEY_ID=${{ env.APP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY=${{ env.APP_AWS_SECRET_ACCESS_KEY }}
-          PORT=8080
+          PORT=80
           EOF
           sed -i 's/^[[:space:]]*//' /tmp/app.env
           aws s3 cp /tmp/app.env s3://${{ env.DEPLOY_BUCKET }}/rpi-guessr/app.env
