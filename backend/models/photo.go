@@ -31,12 +31,18 @@ type GuessRequest struct {
 	Latitude  float64 `json:"latitude" binding:"required"`
 }
 
+type Location struct {
+	Longitude float64 `json:"longitude"`
+	Latitude  float64 `json:"latitude"`
+}
+
 type GuessResponse struct {
 	DistanceKm     float64 `json:"distance_km"`
 	ActualLocation struct {
 		Longitude float64 `json:"longitude"`
 		Latitude  float64 `json:"latitude"`
 	} `json:"actual_location"`
+	OtherGuesses []Location `json:"other_guesses,omitempty"`
 }
 
 type PhotoListItem struct {

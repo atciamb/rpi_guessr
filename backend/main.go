@@ -55,6 +55,7 @@ func main() {
 		{
 			admin.GET("/photos", photoHandler.ListPhotos)
 			admin.POST("/photos", photoHandler.UploadPhoto)
+			admin.GET("/photos/:id/guesses", photoHandler.GetPhotoGuesses)
 			admin.PUT("/photos/:id/location", photoHandler.UpdatePhotoLocation)
 			admin.DELETE("/photos/:id", photoHandler.DeletePhoto)
 		}

@@ -16,6 +16,10 @@ interface GuessResult {
     longitude: number
     latitude: number
   }
+  other_guesses?: {
+    longitude: number
+    latitude: number
+  }[]
 }
 
 const guessIcon = new Icon({
@@ -34,6 +38,17 @@ const actualIcon = new Icon({
   `),
   iconSize: [32, 32],
   iconAnchor: [16, 32],
+})
+
+// Orange marker for other users' guesses
+const otherGuessIcon = new Icon({
+  iconUrl: 'data:image/svg+xml,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="16" height="24">
+      <path fill="#f97316" fill-opacity="0.7" stroke="#c2410c" stroke-width="1" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12zm0 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/>
+    </svg>
+  `),
+  iconSize: [16, 24],
+  iconAnchor: [8, 24],
 })
 
 function MapClickHandler({ onMapClick, disabled }: { onMapClick: (latlng: LatLng) => void; disabled: boolean }) {
@@ -200,6 +215,13 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
 
             {guess && <Marker position={guess} icon={guessIcon} />}
             {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+            {result?.other_guesses?.map((g, i) => (
+              <Marker
+                key={i}
+                position={[g.latitude, g.longitude]}
+                icon={otherGuessIcon}
+              />
+            ))}
             {guess && actualLocation && (
               <Polyline
                 positions={[guess, actualLocation]}
@@ -305,6 +327,13 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
 
               {guess && <Marker position={guess} icon={guessIcon} />}
               {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+              {result?.other_guesses?.map((g, i) => (
+                <Marker
+                  key={i}
+                  position={[g.latitude, g.longitude]}
+                  icon={otherGuessIcon}
+                />
+              ))}
               {guess && actualLocation && (
                 <Polyline
                   positions={[guess, actualLocation]}

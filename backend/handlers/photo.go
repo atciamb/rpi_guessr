@@ -174,8 +174,39 @@ func (h *PhotoHandler) SubmitGuess(c *gin.Context) {
 
 	distanceKm := haversineDistance(req.Latitude, req.Longitude, actualLat, actualLon)
 
+	// Store the guess in the database
+	insertQuery := `
+		INSERT INTO guesses (photo_id, guess_longitude, guess_latitude, distance_km, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+	_, err = h.db.Pool.Exec(context.Background(), insertQuery, photoID, req.Longitude, req.Latitude, distanceKm, time.Now())
+	if err != nil {
+		// Log but don't fail the request - guessing should still work
+		fmt.Printf("Failed to store guess: %v\n", err)
+	}
+
+	// Fetch other guesses for this photo (excluding the one just made, limit to recent 50)
+	guessQuery := `
+		SELECT guess_longitude, guess_latitude
+		FROM guesses
+		WHERE photo_id = $1
+		ORDER BY created_at DESC
+		LIMIT 50
+	`
+	rows, _ := h.db.Pool.Query(context.Background(), guessQuery, photoID)
+	defer rows.Close()
+
+	var otherGuesses []models.Location
+	for rows.Next() {
+		var loc models.Location
+		if err := rows.Scan(&loc.Longitude, &loc.Latitude); err == nil {
+			otherGuesses = append(otherGuesses, loc)
+		}
+	}
+
 	response := models.GuessResponse{
-		DistanceKm: distanceKm,
+		DistanceKm:   distanceKm,
+		OtherGuesses: otherGuesses,
 	}
 	response.ActualLocation.Longitude = actualLon
 	response.ActualLocation.Latitude = actualLat
@@ -209,6 +240,42 @@ func (h *PhotoHandler) ListPhotos(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, photos)
+}
+
+func (h *PhotoHandler) GetPhotoGuesses(c *gin.Context) {
+	photoID := c.Param("id")
+
+	query := `SELECT id, guess_longitude, guess_latitude, distance_km, created_at FROM guesses WHERE photo_id = $1 ORDER BY created_at DESC`
+
+	rows, err := h.db.Pool.Query(context.Background(), query, photoID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch guesses"})
+		return
+	}
+	defer rows.Close()
+
+	type GuessItem struct {
+		ID        string    `json:"id"`
+		Longitude float64   `json:"longitude"`
+		Latitude  float64   `json:"latitude"`
+		DistanceKm float64  `json:"distance_km"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+
+	var guesses []GuessItem
+	for rows.Next() {
+		var g GuessItem
+		if err := rows.Scan(&g.ID, &g.Longitude, &g.Latitude, &g.DistanceKm, &g.CreatedAt); err != nil {
+			continue
+		}
+		guesses = append(guesses, g)
+	}
+
+	if guesses == nil {
+		guesses = []GuessItem{}
+	}
+
+	c.JSON(http.StatusOK, guesses)
 }
 
 func (h *PhotoHandler) UpdatePhotoLocation(c *gin.Context) {

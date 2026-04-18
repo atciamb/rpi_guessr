@@ -13,11 +13,30 @@ const markerIcon = new L.Icon({
   iconAnchor: [12, 41],
 })
 
+// Orange marker for user guesses
+const guessIcon = new L.Icon({
+  iconUrl: 'data:image/svg+xml,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="24" height="36">
+      <path fill="#f97316" stroke="#c2410c" stroke-width="1" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12zm0 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/>
+    </svg>
+  `),
+  iconSize: [24, 36],
+  iconAnchor: [12, 36],
+})
+
 interface Photo {
   id: string
   photo_url: string
   longitude: number
   latitude: number
+  created_at: string
+}
+
+interface Guess {
+  id: string
+  longitude: number
+  latitude: number
+  distance_km: number
   created_at: string
 }
 
@@ -41,6 +60,7 @@ export default function AdminPage({ onBack }: AdminPageProps) {
   const [userEmail, setUserEmail] = useState<string | null>(() => localStorage.getItem('admin_email'))
   const [editingPhoto, setEditingPhoto] = useState<Photo | null>(null)
   const [editLocation, setEditLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [photoGuesses, setPhotoGuesses] = useState<Guess[]>([])
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -192,9 +212,23 @@ export default function AdminPage({ onBack }: AdminPageProps) {
 
   const uploading = progress !== null
 
-  const openEditLocation = (photo: Photo) => {
+  const openEditLocation = async (photo: Photo) => {
     setEditingPhoto(photo)
     setEditLocation({ lat: photo.latitude, lng: photo.longitude })
+    setPhotoGuesses([])
+
+    // Fetch guesses for this photo
+    try {
+      const response = await fetch(`${API_BASE}/api/photos/${photo.id}/guesses`, {
+        headers: getAuthHeaders()
+      })
+      if (response.ok) {
+        const guesses = await response.json()
+        setPhotoGuesses(guesses)
+      }
+    } catch (error) {
+      console.error('Failed to fetch guesses:', error)
+    }
   }
 
   const saveLocation = async () => {
@@ -227,6 +261,7 @@ export default function AdminPage({ onBack }: AdminPageProps) {
         ))
         setEditingPhoto(null)
         setEditLocation(null)
+        setPhotoGuesses([])
       } else {
         alert('Failed to update location')
       }
@@ -396,7 +431,7 @@ export default function AdminPage({ onBack }: AdminPageProps) {
             <div className="p-3 md:p-4 border-b border-gray-700 flex justify-between items-center">
               <h2 className="text-lg md:text-xl font-bold text-white">Edit Location</h2>
               <button
-                onClick={() => { setEditingPhoto(null); setEditLocation(null); }}
+                onClick={() => { setEditingPhoto(null); setEditLocation(null); setPhotoGuesses([]); }}
                 className="text-gray-400 hover:text-white text-2xl leading-none"
               >
                 &times;
@@ -417,6 +452,11 @@ export default function AdminPage({ onBack }: AdminPageProps) {
                       New: {editLocation.lat.toFixed(4)}, {editLocation.lng.toFixed(4)}
                     </p>
                   )}
+                  {photoGuesses.length > 0 && (
+                    <p className="text-orange-400 mt-2">
+                      {photoGuesses.length} guess{photoGuesses.length !== 1 ? 'es' : ''} (orange pins)
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -431,13 +471,20 @@ export default function AdminPage({ onBack }: AdminPageProps) {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
                   <LocationPicker />
+                  {photoGuesses.map(guess => (
+                    <Marker
+                      key={guess.id}
+                      position={[guess.latitude, guess.longitude]}
+                      icon={guessIcon}
+                    />
+                  ))}
                 </MapContainer>
               </div>
             </div>
 
             <div className="p-3 md:p-4 border-t border-gray-700 flex justify-end gap-2 md:gap-4">
               <button
-                onClick={() => { setEditingPhoto(null); setEditLocation(null); }}
+                onClick={() => { setEditingPhoto(null); setEditLocation(null); setPhotoGuesses([]); }}
                 className="px-4 py-2 md:px-6 text-sm md:text-base text-gray-400 border border-gray-600 rounded-lg
                            hover:bg-gray-800 transition-colors"
               >
