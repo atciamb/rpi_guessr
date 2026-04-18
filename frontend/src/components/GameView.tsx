@@ -147,96 +147,178 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
   }
 
   return (
-    <div className="min-h-screen h-screen relative">
-      {/* Back button */}
-      <button
-        onClick={onBack}
-        className="absolute top-4 left-4 z-50 px-4 py-2 bg-black/50 text-white
-                   rounded-lg hover:bg-black/70 transition-colors"
-      >
-        ← Back
-      </button>
+    <>
+      {/* Mobile Layout */}
+      <div className="md:hidden h-screen flex flex-col">
+        {/* Back button - mobile */}
+        <button
+          onClick={onBack}
+          className="absolute top-2 left-2 z-50 px-3 py-1.5 bg-black/50 text-white text-sm
+                     rounded-lg hover:bg-black/70 transition-colors"
+        >
+          ← Back
+        </button>
 
-      {/* Result overlay */}
-      {result && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
-                        px-8 py-4 rounded-xl text-center">
-          <p className="text-2xl font-bold text-red-400">
-            {formatDistance(result.distance_km)} away
-          </p>
-          <button
-            onClick={onPlayAgain}
-            className="mt-3 px-6 py-2 bg-red-600 rounded-lg hover:bg-red-500 font-medium"
-          >
-            Play Again
-          </button>
-        </div>
-      )}
-
-      {/* Photo display - full screen background */}
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${photo.photo_url})` }}
-      />
-
-      {/* Dark overlay for better contrast */}
-      <div className="absolute inset-0 bg-black/20" />
-
-      {/* Map and button container - bottom right */}
-      <div
-        onMouseEnter={() => setMapHovered(true)}
-        onMouseLeave={() => !result && setMapHovered(false)}
-        className="absolute bottom-4 right-4 z-40 flex flex-col gap-2"
-      >
-        {/* Guess button - below map */}
-        {!result && (
-          <button
-            onClick={handleGuess}
-            disabled={!guess || submitting}
-            className="order-2 w-full py-3 bg-red-600 text-white font-bold rounded-lg
-                       hover:bg-red-500 transition-colors shadow-lg
-                       disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Submitting...' : 'GUESS'}
-          </button>
+        {/* Result overlay - mobile */}
+        {result && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
+                          px-4 py-2 rounded-xl text-center">
+            <p className="text-lg font-bold text-red-400">
+              {formatDistance(result.distance_km)} away
+            </p>
+            <button
+              onClick={onPlayAgain}
+              className="mt-2 px-4 py-1.5 bg-red-600 rounded-lg hover:bg-red-500 font-medium text-sm"
+            >
+              Play Again
+            </button>
+          </div>
         )}
 
-        {/* Map widget */}
+        {/* Photo - top half */}
         <div
-          style={{
-            width: mapHovered ? '35vw' : '200px',
-            height: mapHovered ? '35vh' : '150px',
-          }}
-          className="order-1 rounded-lg overflow-hidden shadow-2xl border-2 border-red-600
-                     transition-all duration-300 ease-out"
+          className="flex-1 bg-cover bg-center bg-no-repeat relative"
+          style={{ backgroundImage: `url(${photo.photo_url})` }}
         >
-          <MapContainer
-            center={[42.7302, -73.6788]}
-            zoom={15}
-            className="w-full h-full"
-            zoomControl={false}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
-            <MapResizeHandler expanded={mapHovered} />
-            {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
+          <div className="absolute inset-0 bg-black/10" />
+        </div>
 
-            {guess && <Marker position={guess} icon={guessIcon} />}
-            {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
-            {guess && actualLocation && (
-              <Polyline
-                positions={[guess, actualLocation]}
-                color="#dc2626"
-                weight={3}
-                dashArray="10, 10"
+        {/* Map and button - bottom half */}
+        <div className="h-[45vh] flex flex-col">
+          <div className="flex-1 relative">
+            <MapContainer
+              center={[42.7302, -73.6788]}
+              zoom={15}
+              className="w-full h-full"
+              zoomControl={false}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-            )}
-          </MapContainer>
+              <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
+              {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
+
+              {guess && <Marker position={guess} icon={guessIcon} />}
+              {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+              {guess && actualLocation && (
+                <Polyline
+                  positions={[guess, actualLocation]}
+                  color="#dc2626"
+                  weight={3}
+                  dashArray="10, 10"
+                />
+              )}
+            </MapContainer>
+          </div>
+
+          {/* Guess button - mobile */}
+          {!result && (
+            <button
+              onClick={handleGuess}
+              disabled={!guess || submitting}
+              className="w-full py-3 bg-red-600 text-white font-bold
+                         hover:bg-red-500 transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Submitting...' : 'GUESS'}
+            </button>
+          )}
         </div>
       </div>
-    </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden md:block min-h-screen h-screen relative">
+        {/* Back button */}
+        <button
+          onClick={onBack}
+          className="absolute top-4 left-4 z-50 px-4 py-2 bg-black/50 text-white
+                     rounded-lg hover:bg-black/70 transition-colors"
+        >
+          ← Back
+        </button>
+
+        {/* Result overlay */}
+        {result && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
+                          px-8 py-4 rounded-xl text-center">
+            <p className="text-2xl font-bold text-red-400">
+              {formatDistance(result.distance_km)} away
+            </p>
+            <button
+              onClick={onPlayAgain}
+              className="mt-3 px-6 py-2 bg-red-600 rounded-lg hover:bg-red-500 font-medium"
+            >
+              Play Again
+            </button>
+          </div>
+        )}
+
+        {/* Photo display - full screen background */}
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `url(${photo.photo_url})` }}
+        />
+
+        {/* Dark overlay for better contrast */}
+        <div className="absolute inset-0 bg-black/20" />
+
+        {/* Map and button container - bottom right */}
+        <div
+          onMouseEnter={() => setMapHovered(true)}
+          onMouseLeave={() => !result && setMapHovered(false)}
+          className="absolute bottom-4 right-4 z-40 flex flex-col gap-2"
+        >
+          {/* Guess button - below map */}
+          {!result && (
+            <button
+              onClick={handleGuess}
+              disabled={!guess || submitting}
+              className="order-2 w-full py-3 bg-red-600 text-white font-bold rounded-lg
+                         hover:bg-red-500 transition-colors shadow-lg
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? 'Submitting...' : 'GUESS'}
+            </button>
+          )}
+
+          {/* Map widget */}
+          <div
+            style={{
+              width: mapHovered ? '35vw' : '200px',
+              height: mapHovered ? '35vh' : '150px',
+            }}
+            className="order-1 rounded-lg overflow-hidden shadow-2xl border-2 border-red-600
+                       transition-all duration-300 ease-out"
+          >
+            <MapContainer
+              center={[42.7302, -73.6788]}
+              zoom={15}
+              className="w-full h-full"
+              zoomControl={false}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
+              <MapResizeHandler expanded={mapHovered} />
+              {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
+
+              {guess && <Marker position={guess} icon={guessIcon} />}
+              {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+              {guess && actualLocation && (
+                <Polyline
+                  positions={[guess, actualLocation]}
+                  color="#dc2626"
+                  weight={3}
+                  dashArray="10, 10"
+                />
+              )}
+            </MapContainer>
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
