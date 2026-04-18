@@ -78,3 +78,11 @@ func (s *S3Storage) GetPresignedURL(ctx context.Context, key string, expiry time
 func (s *S3Storage) Bucket() string {
 	return s.bucket
 }
+
+func (s *S3Storage) Delete(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	return err
+}

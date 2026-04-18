@@ -17,6 +17,8 @@ env:
   S3_BUCKET: ${{ secrets.S3_BUCKET }}
   APP_AWS_ACCESS_KEY_ID: ${{ secrets.APP_AWS_ACCESS_KEY_ID }}
   APP_AWS_SECRET_ACCESS_KEY: ${{ secrets.APP_AWS_SECRET_ACCESS_KEY }}
+  GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+  ALLOWED_DOMAIN: ${{ secrets.ALLOWED_DOMAIN }}
 
 jobs:
   build:
@@ -79,6 +81,8 @@ jobs:
           AWS_ACCESS_KEY_ID=${{ env.APP_AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY=${{ env.APP_AWS_SECRET_ACCESS_KEY }}
           PORT=80
+          GOOGLE_CLIENT_ID=${{ env.GOOGLE_CLIENT_ID }}
+          ALLOWED_DOMAIN=${{ env.ALLOWED_DOMAIN }}
           EOF
           sed -i 's/^[[:space:]]*//' /tmp/app.env
           aws s3 cp /tmp/app.env s3://${{ env.DEPLOY_BUCKET }}/rpi-guessr/app.env

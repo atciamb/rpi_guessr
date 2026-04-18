@@ -6,6 +6,7 @@ import (
 	"rpi_guessr/backend/config"
 	"rpi_guessr/backend/database"
 	"rpi_guessr/backend/handlers"
+	"rpi_guessr/backend/middleware"
 	"rpi_guessr/backend/storage"
 
 	"github.com/gin-contrib/cors"
@@ -27,13 +28,14 @@ func main() {
 	}
 
 	photoHandler := handlers.NewPhotoHandler(db, s3Storage)
+	authMiddleware := middleware.NewAuthMiddleware(cfg.GoogleClientID, cfg.AllowedDomain)
 
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,
-		AllowMethods:    []string{"GET", "POST", "OPTIONS"},
-		AllowHeaders:    []string{"Origin", "Content-Type"},
+		AllowMethods:    []string{"GET", "POST", "DELETE", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization"},
 	}))
 
 	r.GET("/health", func(c *gin.Context) {
@@ -42,10 +44,19 @@ func main() {
 
 	api := r.Group("/api")
 	{
+		// Public routes
 		api.GET("/photos/random", photoHandler.GetRandomPhoto)
 		api.GET("/photos/:id", photoHandler.GetPhotoInfo)
-		api.POST("/photos", photoHandler.UploadPhoto)
 		api.POST("/photos/:id/guess", photoHandler.SubmitGuess)
+
+		// Admin routes (require auth)
+		admin := api.Group("")
+		admin.Use(authMiddleware.RequireAuth())
+		{
+			admin.GET("/photos", photoHandler.ListPhotos)
+			admin.POST("/photos", photoHandler.UploadPhoto)
+			admin.DELETE("/photos/:id", photoHandler.DeletePhoto)
+		}
 	}
 
 	log.Printf("Server starting on port %s", cfg.Port)

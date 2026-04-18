@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { GoogleOAuthProvider } from '@react-oauth/google'
 import MainMenu from './components/MainMenu'
 import GameView from './components/GameView'
-import { API_BASE } from './config'
+import AdminPage from './components/AdminPage'
+import { API_BASE, GOOGLE_CLIENT_ID } from './config'
 
-export type GameState = 'menu' | 'playing'
+export type GameState = 'menu' | 'playing' | 'admin'
+
+function getInitialState(): GameState {
+  return window.location.pathname === '/admin' ? 'admin' : 'menu'
+}
 
 export interface PhotoData {
   id: string
@@ -11,8 +17,16 @@ export interface PhotoData {
 }
 
 function App() {
-  const [gameState, setGameState] = useState<GameState>('menu')
+  const [gameState, setGameState] = useState<GameState>(getInitialState)
   const [currentPhoto, setCurrentPhoto] = useState<PhotoData | null>(null)
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setGameState(getInitialState())
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const fetchRandomPhoto = async () => {
     const response = await fetch(`${API_BASE}/api/photos/random`)
@@ -42,19 +56,25 @@ function App() {
   }
 
   const handleBackToMenu = () => {
+    window.history.pushState({}, '', '/')
     setGameState('menu')
     setCurrentPhoto(null)
   }
 
   return (
-    <div className="min-h-screen">
-      {gameState === 'menu' && (
-        <MainMenu onPlay={handlePlay} />
-      )}
-      {gameState === 'playing' && currentPhoto && (
-        <GameView photo={currentPhoto} onBack={handleBackToMenu} onPlayAgain={handlePlayAgain} />
-      )}
-    </div>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <div className="min-h-screen">
+        {gameState === 'menu' && (
+          <MainMenu onPlay={handlePlay} />
+        )}
+        {gameState === 'playing' && currentPhoto && (
+          <GameView photo={currentPhoto} onBack={handleBackToMenu} onPlayAgain={handlePlayAgain} />
+        )}
+        {gameState === 'admin' && (
+          <AdminPage onBack={handleBackToMenu} />
+        )}
+      </div>
+    </GoogleOAuthProvider>
   )
 }
 

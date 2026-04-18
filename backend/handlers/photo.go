@@ -182,3 +182,57 @@ func (h *PhotoHandler) SubmitGuess(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+func (h *PhotoHandler) ListPhotos(c *gin.Context) {
+	query := `SELECT id, s3_key, longitude, latitude, created_at FROM photos ORDER BY created_at DESC`
+
+	rows, err := h.db.Pool.Query(context.Background(), query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch photos"})
+		return
+	}
+	defer rows.Close()
+
+	var photos []models.PhotoListItem
+	for rows.Next() {
+		var photo models.PhotoListItem
+		var s3Key string
+		if err := rows.Scan(&photo.ID, &s3Key, &photo.Longitude, &photo.Latitude, &photo.CreatedAt); err != nil {
+			continue
+		}
+		photo.PhotoURL = h.storage.GetURL(s3Key)
+		photos = append(photos, photo)
+	}
+
+	if photos == nil {
+		photos = []models.PhotoListItem{}
+	}
+
+	c.JSON(http.StatusOK, photos)
+}
+
+func (h *PhotoHandler) DeletePhoto(c *gin.Context) {
+	photoID := c.Param("id")
+
+	query := `SELECT s3_key FROM photos WHERE id = $1`
+	var s3Key string
+	err := h.db.Pool.QueryRow(context.Background(), query, photoID).Scan(&s3Key)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+
+	if err := h.storage.Delete(c.Request.Context(), s3Key); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete photo from storage"})
+		return
+	}
+
+	deleteQuery := `DELETE FROM photos WHERE id = $1`
+	_, err = h.db.Pool.Exec(context.Background(), deleteQuery, photoID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete photo metadata"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Photo deleted"})
+}

@@ -38,3 +38,11 @@ type GuessResponse struct {
 		Latitude  float64 `json:"latitude"`
 	} `json:"actual_location"`
 }
+
+type PhotoListItem struct {
+	ID        string    `json:"id"`
+	PhotoURL  string    `json:"photo_url"`
+	Longitude float64   `json:"longitude"`
+	Latitude  float64   `json:"latitude"`
+	CreatedAt time.Time `json:"created_at"`
+}
