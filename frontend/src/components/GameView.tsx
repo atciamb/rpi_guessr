@@ -149,7 +149,7 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
   return (
     <>
       {/* Mobile Layout */}
-      <div className="md:hidden h-screen flex flex-col">
+      <div className="md:hidden fixed inset-0 flex flex-col overflow-hidden">
         {/* Back button - mobile */}
         <button
           onClick={onBack}
@@ -175,56 +175,54 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
           </div>
         )}
 
-        {/* Photo - top half */}
+        {/* Photo - top portion */}
         <div
-          className="flex-1 bg-cover bg-center bg-no-repeat relative"
+          className="h-[45%] bg-cover bg-center bg-no-repeat relative flex-shrink-0"
           style={{ backgroundImage: `url(${photo.photo_url})` }}
         >
           <div className="absolute inset-0 bg-black/10" />
         </div>
 
-        {/* Map and button - bottom half */}
-        <div className="h-[45vh] flex flex-col">
-          <div className="flex-1 relative">
-            <MapContainer
-              center={[42.7302, -73.6788]}
-              zoom={15}
-              className="w-full h-full"
-              zoomControl={false}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        {/* Map - bottom portion */}
+        <div className="flex-1 min-h-0">
+          <MapContainer
+            center={[42.7302, -73.6788]}
+            zoom={15}
+            className="w-full h-full"
+            zoomControl={false}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
+            {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
+
+            {guess && <Marker position={guess} icon={guessIcon} />}
+            {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+            {guess && actualLocation && (
+              <Polyline
+                positions={[guess, actualLocation]}
+                color="#dc2626"
+                weight={3}
+                dashArray="10, 10"
               />
-              <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
-              {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
-
-              {guess && <Marker position={guess} icon={guessIcon} />}
-              {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
-              {guess && actualLocation && (
-                <Polyline
-                  positions={[guess, actualLocation]}
-                  color="#dc2626"
-                  weight={3}
-                  dashArray="10, 10"
-                />
-              )}
-            </MapContainer>
-          </div>
-
-          {/* Guess button - mobile */}
-          {!result && (
-            <button
-              onClick={handleGuess}
-              disabled={!guess || submitting}
-              className="w-full py-3 bg-red-600 text-white font-bold
-                         hover:bg-red-500 transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? 'Submitting...' : 'GUESS'}
-            </button>
-          )}
+            )}
+          </MapContainer>
         </div>
+
+        {/* Guess button - mobile, fixed at bottom */}
+        {!result && (
+          <button
+            onClick={handleGuess}
+            disabled={!guess || submitting}
+            className="flex-shrink-0 w-full py-3 bg-red-600 text-white font-bold
+                       hover:bg-red-500 transition-colors
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? 'Submitting...' : 'GUESS'}
+          </button>
+        )}
       </div>
 
       {/* Desktop Layout */}
