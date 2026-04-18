@@ -34,7 +34,7 @@ func main() {
 
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins: true,
-		AllowMethods:    []string{"GET", "POST", "DELETE", "OPTIONS"},
+		AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization"},
 	}))
 
@@ -55,6 +55,7 @@ func main() {
 		{
 			admin.GET("/photos", photoHandler.ListPhotos)
 			admin.POST("/photos", photoHandler.UploadPhoto)
+			admin.PUT("/photos/:id/location", photoHandler.UpdatePhotoLocation)
 			admin.DELETE("/photos/:id", photoHandler.DeletePhoto)
 		}
 	}

@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { GoogleLogin, googleLogout } from '@react-oauth/google'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import { API_BASE, GOOGLE_CLIENT_ID } from '../config'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+const markerIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+})
 
 interface Photo {
   id: string
@@ -28,6 +39,9 @@ export default function AdminPage({ onBack }: AdminPageProps) {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('admin_token'))
   const [userEmail, setUserEmail] = useState<string | null>(() => localStorage.getItem('admin_email'))
+  const [editingPhoto, setEditingPhoto] = useState<Photo | null>(null)
+  const [editLocation, setEditLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Skip auth if no client ID configured (local dev)
@@ -178,6 +192,63 @@ export default function AdminPage({ onBack }: AdminPageProps) {
 
   const uploading = progress !== null
 
+  const openEditLocation = (photo: Photo) => {
+    setEditingPhoto(photo)
+    setEditLocation({ lat: photo.latitude, lng: photo.longitude })
+  }
+
+  const saveLocation = async () => {
+    if (!editingPhoto || !editLocation) return
+
+    setSaving(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/photos/${editingPhoto.id}/location`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          latitude: editLocation.lat,
+          longitude: editLocation.lng,
+        }),
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+
+      if (response.ok) {
+        setPhotos(photos.map(p =>
+          p.id === editingPhoto.id
+            ? { ...p, latitude: editLocation.lat, longitude: editLocation.lng }
+            : p
+        ))
+        setEditingPhoto(null)
+        setEditLocation(null)
+      } else {
+        alert('Failed to update location')
+      }
+    } catch (error) {
+      console.error('Update failed:', error)
+      alert('Failed to update location')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function LocationPicker() {
+    useMapEvents({
+      click(e) {
+        setEditLocation({ lat: e.latlng.lat, lng: e.latlng.lng })
+      },
+    })
+    return editLocation ? (
+      <Marker position={[editLocation.lat, editLocation.lng]} icon={markerIcon} />
+    ) : null
+  }
+
   // Show login screen if auth is required and not authenticated
   if (authRequired && !isAuthenticated) {
     return (
@@ -269,15 +340,24 @@ export default function AdminPage({ onBack }: AdminPageProps) {
                     <p>Lat: {photo.latitude.toFixed(6)}</p>
                     <p>Lon: {photo.longitude.toFixed(6)}</p>
                   </div>
-                  <button
-                    onClick={() => handleDelete(photo.id)}
-                    disabled={deleting === photo.id}
-                    className="w-full py-2 bg-red-600 text-white rounded
-                               hover:bg-red-500 transition-colors text-sm
-                               disabled:opacity-50"
-                  >
-                    {deleting === photo.id ? 'Deleting...' : 'Delete'}
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => openEditLocation(photo)}
+                      className="w-full py-2 bg-blue-600 text-white rounded
+                                 hover:bg-blue-500 transition-colors text-sm"
+                    >
+                      Edit Location
+                    </button>
+                    <button
+                      onClick={() => handleDelete(photo.id)}
+                      disabled={deleting === photo.id}
+                      className="w-full py-2 bg-red-600 text-white rounded
+                                 hover:bg-red-500 transition-colors text-sm
+                                 disabled:opacity-50"
+                    >
+                      {deleting === photo.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -288,6 +368,73 @@ export default function AdminPage({ onBack }: AdminPageProps) {
           Total: {photos.length} photo{photos.length !== 1 ? 's' : ''}
         </p>
       </div>
+
+      {/* Edit Location Modal */}
+      {editingPhoto && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-6xl h-[90vh] flex flex-col">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">Edit Photo Location</h2>
+              <button
+                onClick={() => { setEditingPhoto(null); setEditLocation(null); }}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col md:flex-row gap-4 p-4 overflow-hidden min-h-0">
+              <div className="md:w-1/3">
+                <img
+                  src={editingPhoto.photo_url}
+                  alt="Photo being edited"
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+                <div className="mt-4 text-sm text-gray-300">
+                  <p>Current: {editingPhoto.latitude.toFixed(6)}, {editingPhoto.longitude.toFixed(6)}</p>
+                  {editLocation && (
+                    <p className="text-green-400">
+                      New: {editLocation.lat.toFixed(6)}, {editLocation.lng.toFixed(6)}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-[400px] rounded-lg overflow-hidden">
+                <MapContainer
+                  center={[editingPhoto.latitude, editingPhoto.longitude]}
+                  zoom={15}
+                  className="h-full w-full"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <LocationPicker />
+                </MapContainer>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-4">
+              <button
+                onClick={() => { setEditingPhoto(null); setEditLocation(null); }}
+                className="px-6 py-2 text-gray-400 border border-gray-600 rounded-lg
+                           hover:bg-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveLocation}
+                disabled={saving || !editLocation}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg
+                           hover:bg-green-500 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Location'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -211,6 +211,33 @@ func (h *PhotoHandler) ListPhotos(c *gin.Context) {
 	c.JSON(http.StatusOK, photos)
 }
 
+func (h *PhotoHandler) UpdatePhotoLocation(c *gin.Context) {
+	photoID := c.Param("id")
+
+	var req struct {
+		Latitude  float64 `json:"latitude" binding:"required"`
+		Longitude float64 `json:"longitude" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	query := `UPDATE photos SET latitude = $1, longitude = $2, updated_at = $3 WHERE id = $4`
+	result, err := h.db.Pool.Exec(context.Background(), query, req.Latitude, req.Longitude, time.Now(), photoID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update photo"})
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Location updated"})
+}
+
 func (h *PhotoHandler) DeletePhoto(c *gin.Context) {
 	photoID := c.Param("id")
 
