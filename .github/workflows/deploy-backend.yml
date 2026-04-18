@@ -31,15 +31,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
 
       - name: Build server
         working-directory: ./backend
         run: |
-          sed -i 's/go 1.25.0/go 1.24/g' go.mod
-          go mod vendor
-          sed -i 's/go 1.25/go 1.24/g' vendor/modules.txt
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -o rpi-guessr-server .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o rpi-guessr-server .
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
