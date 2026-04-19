@@ -12,6 +12,7 @@ interface GameViewProps {
 
 interface GuessResult {
   distance_km: number
+  points: number
   actual_location: {
     longitude: number
     latitude: number
@@ -355,7 +356,10 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
         {result && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
                           px-4 py-2 rounded-xl text-center">
-            <p className="text-lg font-bold text-red-400">
+            <p className="text-2xl font-bold text-yellow-400">
+              {result.points.toLocaleString()} pts
+            </p>
+            <p className="text-sm text-red-400">
               {formatDistance(result.distance_km)} away
             </p>
             <button
@@ -423,7 +427,10 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
         {result && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
                           px-8 py-4 rounded-xl text-center">
-            <p className="text-2xl font-bold text-red-400">
+            <p className="text-4xl font-bold text-yellow-400">
+              {result.points.toLocaleString()} pts
+            </p>
+            <p className="text-lg text-red-400">
               {formatDistance(result.distance_km)} away
             </p>
             <button

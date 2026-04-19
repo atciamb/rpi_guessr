@@ -38,6 +38,7 @@ type Location struct {
 
 type GuessResponse struct {
 	DistanceKm     float64 `json:"distance_km"`
+	Points         int     `json:"points"`
 	ActualLocation struct {
 		Longitude float64 `json:"longitude"`
 		Latitude  float64 `json:"latitude"`

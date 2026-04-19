@@ -33,6 +33,23 @@ func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return earthRadiusKm * c
 }
 
+// CalculatePoints converts distance to points using exponential decay.
+// Within 15m: 5000 points, at 500m: 1 point, asymptotic decay between.
+func CalculatePoints(distanceKm float64) int {
+	meters := distanceKm * 1000
+	if meters <= 15 {
+		return 5000
+	}
+	// Exponential decay: 5000 * e^(-k * (meters - 15)) where k = ln(5000) / 485
+	k := math.Log(5000) / (500 - 15)
+	points := 5000 * math.Exp(-k*(meters-15))
+	result := int(math.Round(points))
+	if result < 0 {
+		return 0
+	}
+	return result
+}
+
 type PhotoHandler struct {
 	db      *database.PostgresDB
 	storage *storage.S3Storage
@@ -206,6 +223,7 @@ func (h *PhotoHandler) SubmitGuess(c *gin.Context) {
 
 	response := models.GuessResponse{
 		DistanceKm:   distanceKm,
+		Points:       CalculatePoints(distanceKm),
 		OtherGuesses: otherGuesses,
 	}
 	response.ActualLocation.Longitude = actualLon
