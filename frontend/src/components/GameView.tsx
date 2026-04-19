@@ -58,6 +58,19 @@ const otherGuessIcon = new Icon({
   iconAnchor: [8, 24],
 })
 
+// Cookie helpers
+function setCookie(name: string, value: string, days: number = 365) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString()
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`
+}
+
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+  return match ? decodeURIComponent(match[2]) : null
+}
+
+const MIN_MAP_SIZE = { width: 250, height: 200 }
+
 function MapClickHandler({ onMapClick, disabled }: { onMapClick: (latlng: LatLng) => void; disabled: boolean }) {
   useMapEvents({
     click: (e) => {
@@ -69,7 +82,7 @@ function MapClickHandler({ onMapClick, disabled }: { onMapClick: (latlng: LatLng
   return null
 }
 
-function MapResizeHandler({ expanded }: { expanded: boolean }) {
+function MapResizeHandler({ expanded, mapSize }: { expanded: boolean; mapSize: { width: number; height: number } | null }) {
   const map = useMap()
 
   useEffect(() => {
@@ -85,7 +98,7 @@ function MapResizeHandler({ expanded }: { expanded: boolean }) {
       clearTimeout(timeout)
       clearTimeout(timeout2)
     }
-  }, [expanded, map])
+  }, [expanded, mapSize, map])
 
   return null
 }
@@ -254,9 +267,71 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
   const [mapHovered, setMapHovered] = useState(false)
   const [result, setResult] = useState<GuessResult | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [mapSize, setMapSize] = useState<{ width: number; height: number } | null>(null)
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
 
   const mobilePan = useDragToPan()
   const desktopPan = useDragToPan()
+
+  // Load map size from cookie on mount
+  useEffect(() => {
+    const savedSize = getCookie('mapSize')
+    if (savedSize) {
+      try {
+        const parsed = JSON.parse(savedSize)
+        if (parsed.width && parsed.height) {
+          setMapSize(parsed)
+        }
+      } catch {
+        // Invalid cookie, use default
+      }
+    }
+  }, [])
+
+  // Handle resize drag
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizing(true)
+    // If using default viewport size, calculate current pixel dimensions
+    const mapElement = e.currentTarget.parentElement
+    const currentWidth = mapSize?.width ?? mapElement?.clientWidth ?? 500
+    const currentHeight = mapSize?.height ?? mapElement?.clientHeight ?? 400
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: currentWidth,
+      height: currentHeight,
+    }
+  }, [mapSize])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    let currentSize = mapSize ?? { width: 500, height: 400 }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = resizeStartRef.current.x - e.clientX
+      const deltaY = resizeStartRef.current.y - e.clientY
+      const newWidth = Math.max(MIN_MAP_SIZE.width, resizeStartRef.current.width + deltaX)
+      const newHeight = Math.max(MIN_MAP_SIZE.height, resizeStartRef.current.height + deltaY)
+      currentSize = { width: newWidth, height: newHeight }
+      setMapSize(currentSize)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      setCookie('mapSize', JSON.stringify(currentSize))
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing, mapSize])
 
   const isRanked = gameMode !== 'freeplay'
   const currentRound = gameData ? gameData.rounds_played + 1 : 1
@@ -353,7 +428,7 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
-      {showResizeHandler && <MapResizeHandler expanded={mapHovered} />}
+      {showResizeHandler && <MapResizeHandler expanded={mapHovered} mapSize={mapSize} />}
       {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
       {guess && <Marker position={guess} icon={guessIcon} />}
       {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
@@ -521,42 +596,63 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
         {/* Dark overlay for better contrast */}
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
 
-        {/* Map and button container - bottom right */}
+        {/* Buffer zone container - handles mouse leave */}
         <div
-          onMouseEnter={() => setMapHovered(true)}
-          onMouseLeave={() => !result && setMapHovered(false)}
-          className="absolute bottom-4 right-4 z-40 flex flex-col gap-2"
+          onMouseLeave={() => !result && !isResizing && setMapHovered(false)}
+          className="absolute bottom-0 right-0 z-40 flex items-end justify-end"
+          style={{
+            width: mapHovered ? (mapSize ? `${mapSize.width + 80}px` : 'calc(45vw + 80px)') : '232px',
+            height: mapHovered ? (mapSize ? `${mapSize.height + 120}px` : 'calc(45vh + 120px)') : '210px',
+            padding: '16px',
+          }}
         >
-          {/* Guess button - below map */}
-          {!result && (
-            <button
-              onClick={handleGuess}
-              disabled={!guess || submitting}
-              className="order-2 w-full py-3 bg-red-600 text-white font-bold rounded-lg
-                         hover:bg-red-500 transition-colors shadow-lg
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? 'Submitting...' : 'GUESS'}
-            </button>
-          )}
+          <div className="flex flex-col gap-2">
+            {/* Guess button - below map */}
+            {!result && (
+              <button
+                onClick={handleGuess}
+                disabled={!guess || submitting}
+                className="order-2 w-full py-3 bg-red-600 text-white font-bold rounded-lg
+                           hover:bg-red-500 transition-colors shadow-lg
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submitting ? 'Submitting...' : 'GUESS'}
+              </button>
+            )}
 
-          {/* Map widget */}
-          <div
-            style={{
-              width: mapHovered ? '35vw' : '200px',
-              height: mapHovered ? '35vh' : '150px',
-            }}
-            className="order-1 rounded-lg overflow-hidden shadow-2xl border-2 border-red-600
-                       transition-all duration-300 ease-out"
-          >
-            <MapContainer
-              center={[42.7302, -73.6788]}
-              zoom={15}
-              className="w-full h-full"
-              zoomControl={false}
+            {/* Map widget */}
+            <div
+              onMouseEnter={() => setMapHovered(true)}
+              style={{
+                width: mapHovered ? (mapSize ? `${mapSize.width}px` : '45vw') : '200px',
+                height: mapHovered ? (mapSize ? `${mapSize.height}px` : '45vh') : '150px',
+              }}
+              className="order-1 rounded-lg overflow-hidden shadow-2xl border-2 border-red-600
+                         transition-all duration-300 ease-out relative"
             >
-              {mapContent(true)}
-            </MapContainer>
+              {/* Resize handle - top left corner */}
+              {mapHovered && (
+                <div
+                  onMouseDown={handleResizeStart}
+                  className="absolute top-0 left-0 w-6 h-6 cursor-nw-resize z-50 flex items-center justify-center
+                             bg-red-600 hover:bg-red-500 rounded-br-lg opacity-70 hover:opacity-100 transition-opacity"
+                  title="Drag to resize"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                    <path d="M0 12V0h2v10h10v2z"/>
+                    <path d="M4 8V4h2v4h4v2H4z" fillOpacity="0.6"/>
+                  </svg>
+                </div>
+              )}
+              <MapContainer
+                center={[42.7302, -73.6788]}
+                zoom={15}
+                className="w-full h-full"
+                zoomControl={false}
+              >
+                {mapContent(true)}
+              </MapContainer>
+            </div>
           </div>
         </div>
       </div>
