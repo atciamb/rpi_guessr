@@ -83,6 +83,7 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
   const [game, setGame] = useState<GameDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedRound, setExpandedRound] = useState<number | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchGameDetails = async () => {
@@ -222,7 +223,10 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
               {expandedRound === round.round && (
                 <div className="px-4 pb-4">
                   {/* Photo thumbnail */}
-                  <div className="mb-3 rounded-lg overflow-hidden h-32">
+                  <div
+                    className="mb-3 rounded-lg overflow-hidden h-32 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => setLightboxImage(round.photo_url)}
+                  >
                     <img
                       src={round.photo_url}
                       alt={`Round ${round.round}`}
@@ -247,6 +251,28 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
           ))}
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center p-4"
+          style={{ zIndex: 9999 }}
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white text-4xl hover:text-gray-300 transition-colors"
+            onClick={() => setLightboxImage(null)}
+          >
+            &times;
+          </button>
+          <img
+            src={lightboxImage}
+            alt="Full size"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   )
 }
