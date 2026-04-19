@@ -106,6 +106,11 @@ function useDragToPan() {
   const startPos = useRef({ x: 0, y: 0 })
   const translatePos = useRef({ x: 0, y: 0 })
   const currentTranslate = useRef({ x: 0, y: 0 })
+  const currentScale = useRef(1)
+  const lastPinchDist = useRef(0)
+
+  const MIN_SCALE = 1
+  const MAX_SCALE = 3
 
   const clampTranslate = useCallback(() => {
     const container = containerRef.current
@@ -113,8 +118,10 @@ function useDragToPan() {
     if (!container || !image) return
 
     const containerRect = container.getBoundingClientRect()
-    const maxX = Math.max(0, (image.offsetWidth - containerRect.width) / 2)
-    const maxY = Math.max(0, (image.offsetHeight - containerRect.height) / 2)
+    const scaledWidth = image.offsetWidth * currentScale.current
+    const scaledHeight = image.offsetHeight * currentScale.current
+    const maxX = Math.max(0, (scaledWidth - containerRect.width) / 2)
+    const maxY = Math.max(0, (scaledHeight - containerRect.height) / 2)
 
     currentTranslate.current.x = Math.max(-maxX, Math.min(maxX, currentTranslate.current.x))
     currentTranslate.current.y = Math.max(-maxY, Math.min(maxY, currentTranslate.current.y))
@@ -123,42 +130,74 @@ function useDragToPan() {
   const updateTransform = useCallback(() => {
     if (!imageRef.current) return
     clampTranslate()
-    imageRef.current.style.transform = `translate(${currentTranslate.current.x}px, ${currentTranslate.current.y}px)`
+    imageRef.current.style.transform = `translate(${currentTranslate.current.x}px, ${currentTranslate.current.y}px) scale(${currentScale.current})`
   }, [clampTranslate])
+
+  const getPinchDistance = (touches: TouchList) => {
+    return Math.hypot(
+      touches[0].clientX - touches[1].clientX,
+      touches[0].clientY - touches[1].clientY
+    )
+  }
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return
-      isDragging.current = true
-      startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-      translatePos.current = { ...currentTranslate.current }
+      if (e.touches.length === 2) {
+        // Pinch start
+        isDragging.current = false
+        lastPinchDist.current = getPinchDistance(e.touches)
+      } else if (e.touches.length === 1) {
+        isDragging.current = true
+        startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+        translatePos.current = { ...currentTranslate.current }
+      }
     }
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (!isDragging.current || e.touches.length !== 1) return
       e.preventDefault()
-      const dx = e.touches[0].clientX - startPos.current.x
-      const dy = e.touches[0].clientY - startPos.current.y
-      currentTranslate.current.x = translatePos.current.x + dx
-      currentTranslate.current.y = translatePos.current.y + dy
-      updateTransform()
+
+      if (e.touches.length === 2) {
+        // Pinch zoom
+        const dist = getPinchDistance(e.touches)
+        const delta = dist - lastPinchDist.current
+        const scaleChange = delta * 0.01
+        currentScale.current = Math.max(MIN_SCALE, Math.min(MAX_SCALE, currentScale.current + scaleChange))
+        lastPinchDist.current = dist
+        updateTransform()
+      } else if (isDragging.current && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - startPos.current.x
+        const dy = e.touches[0].clientY - startPos.current.y
+        currentTranslate.current.x = translatePos.current.x + dx
+        currentTranslate.current.y = translatePos.current.y + dy
+        updateTransform()
+      }
     }
 
     const handleTouchEnd = () => {
       isDragging.current = false
+      lastPinchDist.current = 0
+    }
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = -e.deltaY * 0.001
+      currentScale.current = Math.max(MIN_SCALE, Math.min(MAX_SCALE, currentScale.current + delta))
+      updateTransform()
     }
 
     container.addEventListener('touchstart', handleTouchStart, { passive: true })
     container.addEventListener('touchmove', handleTouchMove, { passive: false })
     container.addEventListener('touchend', handleTouchEnd, { passive: true })
+    container.addEventListener('wheel', handleWheel, { passive: false })
 
     return () => {
       container.removeEventListener('touchstart', handleTouchStart)
       container.removeEventListener('touchmove', handleTouchMove)
       container.removeEventListener('touchend', handleTouchEnd)
+      container.removeEventListener('wheel', handleWheel)
     }
   }, [updateTransform])
 
@@ -183,10 +222,11 @@ function useDragToPan() {
     if (containerRef.current) containerRef.current.style.cursor = 'grab'
   }, [])
 
-  // Reset position when photo changes
+  // Reset position and zoom when photo changes
   const reset = useCallback(() => {
     currentTranslate.current = { x: 0, y: 0 }
-    if (imageRef.current) imageRef.current.style.transform = 'translate(0px, 0px)'
+    currentScale.current = 1
+    if (imageRef.current) imageRef.current.style.transform = 'translate(0px, 0px) scale(1)'
   }, [])
 
   return {
