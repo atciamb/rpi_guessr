@@ -28,6 +28,7 @@ func main() {
 	}
 
 	photoHandler := handlers.NewPhotoHandler(db, s3Storage)
+	gameHandler := handlers.NewGameHandler(db, s3Storage)
 	authMiddleware := middleware.NewAuthMiddleware(cfg.GoogleClientID, cfg.AllowedDomain)
 
 	r := gin.Default()
@@ -48,6 +49,13 @@ func main() {
 		api.GET("/photos/random", photoHandler.GetRandomPhoto)
 		api.GET("/photos/:id", photoHandler.GetPhotoInfo)
 		api.POST("/photos/:id/guess", photoHandler.SubmitGuess)
+
+		// Game routes
+		api.POST("/games", gameHandler.CreateGame)
+		api.GET("/games/:id", gameHandler.GetGame)
+		api.POST("/games/:id/guess", gameHandler.SubmitGuess)
+		api.GET("/games/:id/details", gameHandler.GetGameDetails)
+		api.GET("/leaderboard", gameHandler.GetLeaderboard)
 
 		// Admin routes (require auth)
 		admin := api.Group("")
