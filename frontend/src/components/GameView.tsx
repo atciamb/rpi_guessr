@@ -101,62 +101,103 @@ function FitBoundsHandler({ guess, actual }: { guess: LatLng | null; actual: Lat
 
 function useDragToPan() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
   const isDragging = useRef(false)
   const startPos = useRef({ x: 0, y: 0 })
-  const scrollPos = useRef({ x: 0, y: 0 })
+  const translatePos = useRef({ x: 0, y: 0 })
+  const currentTranslate = useRef({ x: 0, y: 0 })
+
+  const clampTranslate = useCallback(() => {
+    const container = containerRef.current
+    const image = imageRef.current
+    if (!container || !image) return
+
+    const containerRect = container.getBoundingClientRect()
+    const maxX = Math.max(0, (image.offsetWidth - containerRect.width) / 2)
+    const maxY = Math.max(0, (image.offsetHeight - containerRect.height) / 2)
+
+    currentTranslate.current.x = Math.max(-maxX, Math.min(maxX, currentTranslate.current.x))
+    currentTranslate.current.y = Math.max(-maxY, Math.min(maxY, currentTranslate.current.y))
+  }, [])
+
+  const updateTransform = useCallback(() => {
+    if (!imageRef.current) return
+    clampTranslate()
+    imageRef.current.style.transform = `translate(${currentTranslate.current.x}px, ${currentTranslate.current.y}px)`
+  }, [clampTranslate])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return
+      isDragging.current = true
+      startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      translatePos.current = { ...currentTranslate.current }
+    }
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging.current || e.touches.length !== 1) return
+      e.preventDefault()
+      const dx = e.touches[0].clientX - startPos.current.x
+      const dy = e.touches[0].clientY - startPos.current.y
+      currentTranslate.current.x = translatePos.current.x + dx
+      currentTranslate.current.y = translatePos.current.y + dy
+      updateTransform()
+    }
+
+    const handleTouchEnd = () => {
+      isDragging.current = false
+    }
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true })
+    container.addEventListener('touchmove', handleTouchMove, { passive: false })
+    container.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart)
+      container.removeEventListener('touchmove', handleTouchMove)
+      container.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [updateTransform])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!containerRef.current) return
     isDragging.current = true
     startPos.current = { x: e.clientX, y: e.clientY }
-    scrollPos.current = { x: containerRef.current.scrollLeft, y: containerRef.current.scrollTop }
-    containerRef.current.style.cursor = 'grabbing'
+    translatePos.current = { ...currentTranslate.current }
+    if (containerRef.current) containerRef.current.style.cursor = 'grabbing'
   }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging.current || !containerRef.current) return
+    if (!isDragging.current) return
     const dx = e.clientX - startPos.current.x
     const dy = e.clientY - startPos.current.y
-    containerRef.current.scrollLeft = scrollPos.current.x - dx
-    containerRef.current.scrollTop = scrollPos.current.y - dy
-  }, [])
+    currentTranslate.current.x = translatePos.current.x + dx
+    currentTranslate.current.y = translatePos.current.y + dy
+    updateTransform()
+  }, [updateTransform])
 
   const handleMouseUp = useCallback(() => {
     isDragging.current = false
-    if (containerRef.current) {
-      containerRef.current.style.cursor = 'grab'
-    }
+    if (containerRef.current) containerRef.current.style.cursor = 'grab'
   }, [])
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!containerRef.current || e.touches.length !== 1) return
-    isDragging.current = true
-    startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-    scrollPos.current = { x: containerRef.current.scrollLeft, y: containerRef.current.scrollTop }
-  }, [])
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isDragging.current || !containerRef.current || e.touches.length !== 1) return
-    const dx = e.touches[0].clientX - startPos.current.x
-    const dy = e.touches[0].clientY - startPos.current.y
-    containerRef.current.scrollLeft = scrollPos.current.x - dx
-    containerRef.current.scrollTop = scrollPos.current.y - dy
-  }, [])
-
-  const handleTouchEnd = useCallback(() => {
-    isDragging.current = false
+  // Reset position when photo changes
+  const reset = useCallback(() => {
+    currentTranslate.current = { x: 0, y: 0 }
+    if (imageRef.current) imageRef.current.style.transform = 'translate(0px, 0px)'
   }, [])
 
   return {
     containerRef,
+    imageRef,
+    reset,
     handlers: {
       onMouseDown: handleMouseDown,
       onMouseMove: handleMouseMove,
       onMouseUp: handleMouseUp,
       onMouseLeave: handleMouseUp,
-      onTouchStart: handleTouchStart,
-      onTouchMove: handleTouchMove,
-      onTouchEnd: handleTouchEnd,
     }
   }
 }
@@ -174,7 +215,9 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
     setGuess(null)
     setResult(null)
     setMapHovered(false)
-  }, [photo])
+    mobilePan.reset()
+    desktopPan.reset()
+  }, [photo, mobilePan.reset, desktopPan.reset])
 
   const handleMapClick = (latlng: LatLng) => {
     if (!result) {
@@ -259,12 +302,13 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
         <div
           ref={mobilePan.containerRef}
           {...mobilePan.handlers}
-          className="h-[45%] relative flex-shrink-0 overflow-auto cursor-grab select-none"
+          className="h-[45%] relative flex-shrink-0 overflow-hidden cursor-grab select-none touch-none flex items-center justify-center"
         >
           <img
+            ref={mobilePan.imageRef}
             src={photo.photo_url}
             alt="Guess this location"
-            className="min-w-full min-h-full object-cover pointer-events-none"
+            className="min-w-[120%] min-h-[120%] object-cover pointer-events-none"
             draggable={false}
           />
         </div>
@@ -349,12 +393,13 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
         <div
           ref={desktopPan.containerRef}
           {...desktopPan.handlers}
-          className="absolute inset-0 overflow-auto cursor-grab select-none"
+          className="absolute inset-0 overflow-hidden cursor-grab select-none flex items-center justify-center"
         >
           <img
+            ref={desktopPan.imageRef}
             src={photo.photo_url}
             alt="Guess this location"
-            className="min-w-full min-h-full object-cover pointer-events-none"
+            className="min-w-[110%] min-h-[110%] object-cover pointer-events-none"
             draggable={false}
           />
         </div>
