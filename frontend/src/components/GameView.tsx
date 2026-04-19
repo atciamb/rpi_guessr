@@ -753,6 +753,9 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
                     Location: {reportLocation.lat.toFixed(5)}, {reportLocation.lng.toFixed(5)}
                   </p>
                 )}
+                <p className="text-yellow-500/80 text-xs mt-3">
+                  Note: If accepted, leaderboard scores will be recalculated based on the corrected location.
+                </p>
               </div>
 
               <div className="flex-1 min-h-[250px] md:min-h-[400px] rounded-lg overflow-hidden">
