@@ -378,9 +378,6 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
   const renderResultOverlay = (isMobile: boolean) => {
     if (!result) return null
 
-    const sizeClasses = isMobile
-      ? "px-4 py-2 text-2xl"
-      : "px-8 py-4 text-4xl"
     const distanceClasses = isMobile ? "text-sm" : "text-lg"
     const buttonClasses = isMobile
       ? "mt-2 px-4 py-1.5 text-sm"
