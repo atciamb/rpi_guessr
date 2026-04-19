@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline } from 'react-leaflet'
 import { LatLng, Icon } from 'leaflet'
 import type { PhotoData } from '../App'
@@ -99,11 +99,76 @@ function FitBoundsHandler({ guess, actual }: { guess: LatLng | null; actual: Lat
   return null
 }
 
+function useDragToPan() {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const isDragging = useRef(false)
+  const startPos = useRef({ x: 0, y: 0 })
+  const scrollPos = useRef({ x: 0, y: 0 })
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!containerRef.current) return
+    isDragging.current = true
+    startPos.current = { x: e.clientX, y: e.clientY }
+    scrollPos.current = { x: containerRef.current.scrollLeft, y: containerRef.current.scrollTop }
+    containerRef.current.style.cursor = 'grabbing'
+  }, [])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging.current || !containerRef.current) return
+    const dx = e.clientX - startPos.current.x
+    const dy = e.clientY - startPos.current.y
+    containerRef.current.scrollLeft = scrollPos.current.x - dx
+    containerRef.current.scrollTop = scrollPos.current.y - dy
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    isDragging.current = false
+    if (containerRef.current) {
+      containerRef.current.style.cursor = 'grab'
+    }
+  }, [])
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!containerRef.current || e.touches.length !== 1) return
+    isDragging.current = true
+    startPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    scrollPos.current = { x: containerRef.current.scrollLeft, y: containerRef.current.scrollTop }
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging.current || !containerRef.current || e.touches.length !== 1) return
+    const dx = e.touches[0].clientX - startPos.current.x
+    const dy = e.touches[0].clientY - startPos.current.y
+    containerRef.current.scrollLeft = scrollPos.current.x - dx
+    containerRef.current.scrollTop = scrollPos.current.y - dy
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    isDragging.current = false
+  }, [])
+
+  return {
+    containerRef,
+    handlers: {
+      onMouseDown: handleMouseDown,
+      onMouseMove: handleMouseMove,
+      onMouseUp: handleMouseUp,
+      onMouseLeave: handleMouseUp,
+      onTouchStart: handleTouchStart,
+      onTouchMove: handleTouchMove,
+      onTouchEnd: handleTouchEnd,
+    }
+  }
+}
+
 export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) {
   const [guess, setGuess] = useState<LatLng | null>(null)
   const [mapHovered, setMapHovered] = useState(false)
   const [result, setResult] = useState<GuessResult | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const mobilePan = useDragToPan()
+  const desktopPan = useDragToPan()
 
   useEffect(() => {
     setGuess(null)
@@ -190,12 +255,18 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
           </div>
         )}
 
-        {/* Photo - top portion */}
+        {/* Photo - top portion (drag to pan) */}
         <div
-          className="h-[45%] bg-cover bg-center bg-no-repeat relative flex-shrink-0"
-          style={{ backgroundImage: `url(${photo.photo_url})` }}
+          ref={mobilePan.containerRef}
+          {...mobilePan.handlers}
+          className="h-[45%] relative flex-shrink-0 overflow-auto cursor-grab select-none"
         >
-          <div className="absolute inset-0 bg-black/10" />
+          <img
+            src={photo.photo_url}
+            alt="Guess this location"
+            className="min-w-full min-h-full object-cover pointer-events-none"
+            draggable={false}
+          />
         </div>
 
         {/* Map - bottom portion */}
@@ -274,14 +345,22 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
           </div>
         )}
 
-        {/* Photo display - full screen background */}
+        {/* Photo display - full screen, drag to pan */}
         <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${photo.photo_url})` }}
-        />
+          ref={desktopPan.containerRef}
+          {...desktopPan.handlers}
+          className="absolute inset-0 overflow-auto cursor-grab select-none"
+        >
+          <img
+            src={photo.photo_url}
+            alt="Guess this location"
+            className="min-w-full min-h-full object-cover pointer-events-none"
+            draggable={false}
+          />
+        </div>
 
         {/* Dark overlay for better contrast */}
-        <div className="absolute inset-0 bg-black/20" />
+        <div className="absolute inset-0 bg-black/20 pointer-events-none" />
 
         {/* Map and button container - bottom right */}
         <div
