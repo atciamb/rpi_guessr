@@ -72,6 +72,11 @@ func main() {
 			admin.GET("/reports", photoHandler.ListReports)
 			admin.POST("/reports/:id/accept", photoHandler.AcceptReport)
 			admin.POST("/reports/:id/reject", photoHandler.RejectReport)
+
+			// Game management
+			admin.GET("/games", gameHandler.ListGames)
+			admin.PUT("/games/:id", gameHandler.UpdateGame)
+			admin.DELETE("/games/:id", gameHandler.DeleteGame)
 		}
 	}
 

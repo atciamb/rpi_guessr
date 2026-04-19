@@ -350,3 +350,91 @@ func (h *GameHandler) GetGameDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// Admin handlers
+
+func (h *GameHandler) ListGames(c *gin.Context) {
+	query := `
+		SELECT id, player_name, mode, total_score, rounds_played, completed, created_at, completed_at
+		FROM games
+		WHERE completed = true
+		ORDER BY completed_at DESC
+		LIMIT 200
+	`
+
+	rows, err := h.db.Pool.Query(context.Background(), query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch games"})
+		return
+	}
+	defer rows.Close()
+
+	var games []models.Game
+	for rows.Next() {
+		var game models.Game
+		if err := rows.Scan(&game.ID, &game.PlayerName, &game.Mode, &game.TotalScore,
+			&game.RoundsPlayed, &game.Completed, &game.CreatedAt, &game.CompletedAt); err != nil {
+			continue
+		}
+		games = append(games, game)
+	}
+
+	if games == nil {
+		games = []models.Game{}
+	}
+
+	c.JSON(http.StatusOK, games)
+}
+
+func (h *GameHandler) UpdateGame(c *gin.Context) {
+	gameID := c.Param("id")
+
+	var req struct {
+		PlayerName string `json:"player_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if len(req.PlayerName) < 1 || len(req.PlayerName) > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "player name must be 1-50 characters"})
+		return
+	}
+
+	query := `UPDATE games SET player_name = $1 WHERE id = $2`
+	result, err := h.db.Pool.Exec(context.Background(), query, req.PlayerName, gameID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update game"})
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Game updated"})
+}
+
+func (h *GameHandler) DeleteGame(c *gin.Context) {
+	gameID := c.Param("id")
+
+	// Delete guesses first (should cascade, but being explicit)
+	_, _ = h.db.Pool.Exec(context.Background(), `DELETE FROM guesses WHERE game_id = $1`, gameID)
+
+	// Delete game
+	query := `DELETE FROM games WHERE id = $1`
+	result, err := h.db.Pool.Exec(context.Background(), query, gameID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete game"})
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Game deleted"})
+}

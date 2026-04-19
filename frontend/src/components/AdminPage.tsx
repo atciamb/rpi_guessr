@@ -53,6 +53,14 @@ interface LocationReport {
   created_at: string
 }
 
+interface GameEntry {
+  id: string
+  player_name: string
+  mode: number
+  total_score: number
+  completed_at: string
+}
+
 interface UploadProgress {
   current: number
   total: number
@@ -65,7 +73,7 @@ interface AdminPageProps {
 }
 
 export default function AdminPage({ onBack }: AdminPageProps) {
-  const [activeTab, setActiveTab] = useState<'photos' | 'reports'>('photos')
+  const [activeTab, setActiveTab] = useState<'photos' | 'reports' | 'leaderboard'>('photos')
   const [photos, setPhotos] = useState<Photo[]>([])
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
@@ -83,6 +91,14 @@ export default function AdminPage({ onBack }: AdminPageProps) {
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reviewingReport, setReviewingReport] = useState<LocationReport | null>(null)
   const [processingReport, setProcessingReport] = useState<string | null>(null)
+
+  // Leaderboard/Games state
+  const [games, setGames] = useState<GameEntry[]>([])
+  const [gamesLoading, setGamesLoading] = useState(false)
+  const [editingGame, setEditingGame] = useState<GameEntry | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [processingGame, setProcessingGame] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Skip auth if no client ID configured (local dev)
   const authRequired = GOOGLE_CLIENT_ID !== ''
@@ -227,6 +243,99 @@ export default function AdminPage({ onBack }: AdminPageProps) {
       alert('Failed to reject report')
     } finally {
       setProcessingReport(null)
+    }
+  }
+
+  // Games/Leaderboard handlers
+  const fetchGames = async () => {
+    if (!isAuthenticated) return
+
+    setGamesLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/games`, {
+        headers: getAuthHeaders()
+      })
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+      if (response.ok) {
+        const data = await response.json()
+        setGames(Array.isArray(data) ? data : [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch games:', error)
+    } finally {
+      setGamesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'leaderboard') {
+      fetchGames()
+    }
+  }, [activeTab, isAuthenticated])
+
+  const handleRenameGame = async () => {
+    if (!editingGame || !editingName.trim()) return
+
+    setProcessingGame(editingGame.id)
+    try {
+      const response = await fetch(`${API_BASE}/api/games/${editingGame.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ player_name: editingName.trim() }),
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+
+      if (response.ok) {
+        setGames(games.map(g =>
+          g.id === editingGame.id ? { ...g, player_name: editingName.trim() } : g
+        ))
+        setEditingGame(null)
+        setEditingName('')
+      } else {
+        alert('Failed to rename')
+      }
+    } catch (error) {
+      console.error('Rename failed:', error)
+      alert('Failed to rename')
+    } finally {
+      setProcessingGame(null)
+    }
+  }
+
+  const handleDeleteGame = async (gameId: string) => {
+    setProcessingGame(gameId)
+    try {
+      const response = await fetch(`${API_BASE}/api/games/${gameId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+
+      if (response.ok) {
+        setGames(games.filter(g => g.id !== gameId))
+        setDeleteConfirm(null)
+      } else {
+        alert('Failed to delete')
+      }
+    } catch (error) {
+      console.error('Delete failed:', error)
+      alert('Failed to delete')
+    } finally {
+      setProcessingGame(null)
     }
   }
 
@@ -461,6 +570,15 @@ export default function AdminPage({ onBack }: AdminPageProps) {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('leaderboard')}
+            className={`px-4 py-2 text-sm md:text-base font-medium transition-colors
+                       ${activeTab === 'leaderboard'
+                         ? 'text-red-500 border-b-2 border-red-500'
+                         : 'text-gray-400 hover:text-white'}`}
+          >
+            Leaderboard
+          </button>
         </div>
 
         {/* Photos Tab */}
@@ -619,7 +737,123 @@ export default function AdminPage({ onBack }: AdminPageProps) {
             )}
           </div>
         )}
+
+        {/* Leaderboard Tab */}
+        {activeTab === 'leaderboard' && (
+          <div>
+            {gamesLoading ? (
+              <p className="text-gray-400">Loading games...</p>
+            ) : games.length === 0 ? (
+              <p className="text-gray-400">No completed games yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-gray-700">
+                      <th className="py-3 px-4 text-gray-400 font-medium">Player</th>
+                      <th className="py-3 px-4 text-gray-400 font-medium">Mode</th>
+                      <th className="py-3 px-4 text-gray-400 font-medium">Score</th>
+                      <th className="py-3 px-4 text-gray-400 font-medium">Date</th>
+                      <th className="py-3 px-4 text-gray-400 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {games.map(game => (
+                      <tr key={game.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+                        <td className="py-3 px-4 text-white">{game.player_name}</td>
+                        <td className="py-3 px-4 text-gray-300">{game.mode} rounds</td>
+                        <td className="py-3 px-4 text-yellow-400 font-medium">{game.total_score.toLocaleString()}</td>
+                        <td className="py-3 px-4 text-gray-400 text-sm">
+                          {new Date(game.completed_at).toLocaleDateString()}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingGame(game)
+                                setEditingName(game.player_name)
+                              }}
+                              className="px-3 py-1 bg-blue-600 text-white rounded text-sm
+                                         hover:bg-blue-500 transition-colors"
+                            >
+                              Rename
+                            </button>
+                            {deleteConfirm === game.id ? (
+                              <>
+                                <button
+                                  onClick={() => handleDeleteGame(game.id)}
+                                  disabled={processingGame === game.id}
+                                  className="px-3 py-1 bg-red-600 text-white rounded text-sm
+                                             hover:bg-red-500 transition-colors disabled:opacity-50"
+                                >
+                                  {processingGame === game.id ? '...' : 'Confirm'}
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirm(null)}
+                                  className="px-3 py-1 bg-gray-600 text-white rounded text-sm
+                                             hover:bg-gray-500 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirm(game.id)}
+                                className="px-3 py-1 bg-red-600 text-white rounded text-sm
+                                           hover:bg-red-500 transition-colors"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Rename Game Modal */}
+      {editingGame && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-md p-6">
+            <h2 className="text-xl font-bold text-white mb-4">Rename Player</h2>
+            <input
+              type="text"
+              value={editingName}
+              onChange={(e) => setEditingName(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-800 text-white rounded-lg border border-gray-700
+                         focus:border-red-500 focus:outline-none mb-4"
+              maxLength={50}
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setEditingGame(null)
+                  setEditingName('')
+                }}
+                className="px-4 py-2 text-gray-400 border border-gray-600 rounded-lg
+                           hover:bg-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRenameGame}
+                disabled={processingGame === editingGame.id || !editingName.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg
+                           hover:bg-blue-500 transition-colors disabled:opacity-50"
+              >
+                {processingGame === editingGame.id ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Location Modal */}
       {editingPhoto && (
