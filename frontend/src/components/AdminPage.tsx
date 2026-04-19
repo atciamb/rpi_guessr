@@ -40,6 +40,19 @@ interface Guess {
   created_at: string
 }
 
+interface LocationReport {
+  id: string
+  photo_id: string
+  photo_url: string
+  current_longitude: number
+  current_latitude: number
+  suggested_longitude: number
+  suggested_latitude: number
+  comment?: string
+  status: string
+  created_at: string
+}
+
 interface UploadProgress {
   current: number
   total: number
@@ -52,6 +65,7 @@ interface AdminPageProps {
 }
 
 export default function AdminPage({ onBack }: AdminPageProps) {
+  const [activeTab, setActiveTab] = useState<'photos' | 'reports'>('photos')
   const [photos, setPhotos] = useState<Photo[]>([])
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState<UploadProgress | null>(null)
@@ -63,6 +77,12 @@ export default function AdminPage({ onBack }: AdminPageProps) {
   const [photoGuesses, setPhotoGuesses] = useState<Guess[]>([])
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Reports state
+  const [reports, setReports] = useState<LocationReport[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reviewingReport, setReviewingReport] = useState<LocationReport | null>(null)
+  const [processingReport, setProcessingReport] = useState<string | null>(null)
 
   // Skip auth if no client ID configured (local dev)
   const authRequired = GOOGLE_CLIENT_ID !== ''
@@ -125,6 +145,90 @@ export default function AdminPage({ onBack }: AdminPageProps) {
   useEffect(() => {
     fetchPhotos()
   }, [isAuthenticated])
+
+  const fetchReports = async () => {
+    if (!isAuthenticated) return
+
+    setReportsLoading(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/reports?status=pending`, {
+        headers: getAuthHeaders()
+      })
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+      if (response.ok) {
+        const data = await response.json()
+        setReports(Array.isArray(data) ? data : [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch reports:', error)
+    } finally {
+      setReportsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'reports') {
+      fetchReports()
+    }
+  }, [activeTab, isAuthenticated])
+
+  const handleAcceptReport = async (reportId: string) => {
+    setProcessingReport(reportId)
+    try {
+      const response = await fetch(`${API_BASE}/api/reports/${reportId}/accept`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+
+      if (response.ok) {
+        setReports(reports.filter(r => r.id !== reportId))
+        setReviewingReport(null)
+        fetchPhotos() // Refresh photos to get updated location
+      } else {
+        alert('Failed to accept report')
+      }
+    } catch (error) {
+      console.error('Accept report failed:', error)
+      alert('Failed to accept report')
+    } finally {
+      setProcessingReport(null)
+    }
+  }
+
+  const handleRejectReport = async (reportId: string) => {
+    setProcessingReport(reportId)
+    try {
+      const response = await fetch(`${API_BASE}/api/reports/${reportId}/reject`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        logout()
+        return
+      }
+
+      if (response.ok) {
+        setReports(reports.filter(r => r.id !== reportId))
+        setReviewingReport(null)
+      } else {
+        alert('Failed to reject report')
+      }
+    } catch (error) {
+      console.error('Reject report failed:', error)
+      alert('Failed to reject report')
+    } finally {
+      setProcessingReport(null)
+    }
+  }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -332,31 +436,61 @@ export default function AdminPage({ onBack }: AdminPageProps) {
           </div>
         </div>
 
-        <div className="mb-6 md:mb-8">
-          <label className="cursor-pointer">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp"
-              multiple
-              onChange={handleUpload}
-              disabled={uploading}
-              className="hidden"
-            />
-            <span className={`inline-block px-6 py-2.5 md:px-8 md:py-3 text-base md:text-lg font-medium text-white bg-red-600
-                            rounded-lg hover:bg-red-500 transition-colors
-                            ${uploading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}>
-              {progress
-                ? `Uploading ${progress.current}/${progress.total}...`
-                : 'Upload Photos'}
-            </span>
-          </label>
-          <p className="text-gray-500 text-xs md:text-sm mt-2">
-            Select JPG, PNG, or WebP files with GPS data
-          </p>
+        {/* Tab Navigation */}
+        <div className="flex gap-1 mb-6 border-b border-gray-700">
+          <button
+            onClick={() => setActiveTab('photos')}
+            className={`px-4 py-2 text-sm md:text-base font-medium transition-colors
+                       ${activeTab === 'photos'
+                         ? 'text-red-500 border-b-2 border-red-500'
+                         : 'text-gray-400 hover:text-white'}`}
+          >
+            Photos
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`px-4 py-2 text-sm md:text-base font-medium transition-colors relative
+                       ${activeTab === 'reports'
+                         ? 'text-red-500 border-b-2 border-red-500'
+                         : 'text-gray-400 hover:text-white'}`}
+          >
+            Reports
+            {reports.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                {reports.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        {loading ? (
+        {/* Photos Tab */}
+        {activeTab === 'photos' && (
+          <>
+            <div className="mb-6 md:mb-8">
+              <label className="cursor-pointer">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp"
+                  multiple
+                  onChange={handleUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+                <span className={`inline-block px-6 py-2.5 md:px-8 md:py-3 text-base md:text-lg font-medium text-white bg-red-600
+                                rounded-lg hover:bg-red-500 transition-colors
+                                ${uploading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}>
+                  {progress
+                    ? `Uploading ${progress.current}/${progress.total}...`
+                    : 'Upload Photos'}
+                </span>
+              </label>
+              <p className="text-gray-500 text-xs md:text-sm mt-2">
+                Select JPG, PNG, or WebP files with GPS data
+              </p>
+            </div>
+
+            {loading ? (
           <p className="text-gray-400">Loading photos...</p>
         ) : photos.length === 0 ? (
           <p className="text-gray-400">No photos uploaded yet.</p>
@@ -419,9 +553,72 @@ export default function AdminPage({ onBack }: AdminPageProps) {
           </div>
         )}
 
-        <p className="text-gray-500 text-xs md:text-sm mt-6 md:mt-8">
-          Total: {photos.length} photo{photos.length !== 1 ? 's' : ''}
-        </p>
+            <p className="text-gray-500 text-xs md:text-sm mt-6 md:mt-8">
+              Total: {photos.length} photo{photos.length !== 1 ? 's' : ''}
+            </p>
+          </>
+        )}
+
+        {/* Reports Tab */}
+        {activeTab === 'reports' && (
+          <div>
+            {reportsLoading ? (
+              <p className="text-gray-400">Loading reports...</p>
+            ) : reports.length === 0 ? (
+              <p className="text-gray-400">No pending reports.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {reports.map(report => (
+                  <div key={report.id} className="bg-gray-800 rounded-lg overflow-hidden">
+                    <img
+                      src={report.photo_url}
+                      alt="Reported photo"
+                      className="w-full h-40 object-cover"
+                    />
+                    <div className="p-4">
+                      <p className="text-gray-300 text-sm mb-2">
+                        <span className="text-gray-500">Current:</span>{' '}
+                        {report.current_latitude.toFixed(5)}, {report.current_longitude.toFixed(5)}
+                      </p>
+                      <p className="text-green-400 text-sm mb-2">
+                        <span className="text-gray-500">Suggested:</span>{' '}
+                        {report.suggested_latitude.toFixed(5)}, {report.suggested_longitude.toFixed(5)}
+                      </p>
+                      {report.comment && (
+                        <p className="text-gray-400 text-sm italic mb-3">"{report.comment}"</p>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setReviewingReport(report)}
+                          className="flex-1 py-2 bg-blue-600 text-white rounded
+                                     hover:bg-blue-500 transition-colors text-sm"
+                        >
+                          Review
+                        </button>
+                        <button
+                          onClick={() => handleAcceptReport(report.id)}
+                          disabled={processingReport === report.id}
+                          className="flex-1 py-2 bg-green-600 text-white rounded
+                                     hover:bg-green-500 transition-colors text-sm disabled:opacity-50"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => handleRejectReport(report.id)}
+                          disabled={processingReport === report.id}
+                          className="flex-1 py-2 bg-red-600 text-white rounded
+                                     hover:bg-red-500 transition-colors text-sm disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Edit Location Modal */}
@@ -497,6 +694,118 @@ export default function AdminPage({ onBack }: AdminPageProps) {
                            hover:bg-green-500 transition-colors disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Report Modal */}
+      {reviewingReport && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-2 md:p-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-6xl h-[95vh] md:h-[90vh] flex flex-col">
+            <div className="p-3 md:p-4 border-b border-gray-700 flex justify-between items-center">
+              <h2 className="text-lg md:text-xl font-bold text-white">Review Report</h2>
+              <button
+                onClick={() => setReviewingReport(null)}
+                className="text-gray-400 hover:text-white text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 overflow-hidden min-h-0">
+              <div className="md:w-1/3 flex-shrink-0">
+                <img
+                  src={reviewingReport.photo_url}
+                  alt="Reported photo"
+                  className="w-full h-32 md:h-48 object-cover rounded-lg"
+                />
+                <div className="mt-2 md:mt-4 text-xs md:text-sm text-gray-300 space-y-2">
+                  <p>
+                    <span className="text-gray-500">Current location:</span><br/>
+                    <span className="text-blue-400">{reviewingReport.current_latitude.toFixed(6)}, {reviewingReport.current_longitude.toFixed(6)}</span>
+                  </p>
+                  <p>
+                    <span className="text-gray-500">Suggested location:</span><br/>
+                    <span className="text-green-400">{reviewingReport.suggested_latitude.toFixed(6)}, {reviewingReport.suggested_longitude.toFixed(6)}</span>
+                  </p>
+                  {reviewingReport.comment && (
+                    <p>
+                      <span className="text-gray-500">Comment:</span><br/>
+                      <span className="italic">"{reviewingReport.comment}"</span>
+                    </p>
+                  )}
+                </div>
+                <div className="mt-4 text-xs text-gray-500">
+                  <p><span className="inline-block w-3 h-3 bg-blue-500 rounded-full mr-2"></span>Blue = Current</p>
+                  <p><span className="inline-block w-3 h-3 bg-green-500 rounded-full mr-2"></span>Green = Suggested</p>
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-[200px] md:min-h-[400px] rounded-lg overflow-hidden">
+                <MapContainer
+                  center={[reviewingReport.suggested_latitude, reviewingReport.suggested_longitude]}
+                  zoom={17}
+                  className="h-full w-full"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {/* Current location - blue */}
+                  <Marker
+                    position={[reviewingReport.current_latitude, reviewingReport.current_longitude]}
+                    icon={new L.Icon({
+                      iconUrl: 'data:image/svg+xml,' + encodeURIComponent(`
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="24" height="36">
+                          <path fill="#3b82f6" stroke="#1d4ed8" stroke-width="1" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12zm0 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/>
+                        </svg>
+                      `),
+                      iconSize: [24, 36],
+                      iconAnchor: [12, 36],
+                    })}
+                  />
+                  {/* Suggested location - green */}
+                  <Marker
+                    position={[reviewingReport.suggested_latitude, reviewingReport.suggested_longitude]}
+                    icon={new L.Icon({
+                      iconUrl: 'data:image/svg+xml,' + encodeURIComponent(`
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="24" height="36">
+                          <path fill="#22c55e" stroke="#15803d" stroke-width="1" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24c0-6.6-5.4-12-12-12zm0 16c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/>
+                        </svg>
+                      `),
+                      iconSize: [24, 36],
+                      iconAnchor: [12, 36],
+                    })}
+                  />
+                </MapContainer>
+              </div>
+            </div>
+
+            <div className="p-3 md:p-4 border-t border-gray-700 flex justify-end gap-2 md:gap-4">
+              <button
+                onClick={() => setReviewingReport(null)}
+                className="px-4 py-2 md:px-6 text-sm md:text-base text-gray-400 border border-gray-600 rounded-lg
+                           hover:bg-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRejectReport(reviewingReport.id)}
+                disabled={processingReport === reviewingReport.id}
+                className="px-4 py-2 md:px-6 text-sm md:text-base bg-red-600 text-white rounded-lg
+                           hover:bg-red-500 transition-colors disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <button
+                onClick={() => handleAcceptReport(reviewingReport.id)}
+                disabled={processingReport === reviewingReport.id}
+                className="px-4 py-2 md:px-6 text-sm md:text-base bg-green-600 text-white rounded-lg
+                           hover:bg-green-500 transition-colors disabled:opacity-50"
+              >
+                Accept & Update
               </button>
             </div>
           </div>

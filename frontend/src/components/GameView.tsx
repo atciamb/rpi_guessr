@@ -271,6 +271,12 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
 
+  // Report state
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportLocation, setReportLocation] = useState<LatLng | null>(null)
+  const [reportComment, setReportComment] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+
   const mobilePan = useDragToPan()
   const desktopPan = useDragToPan()
 
@@ -410,6 +416,48 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
     }
   }
 
+  const handleOpenReport = () => {
+    if (result) {
+      setReportLocation(new LatLng(result.actual_location.latitude, result.actual_location.longitude))
+      setReportComment('')
+      setShowReportModal(true)
+    }
+  }
+
+  const handleSubmitReport = async () => {
+    if (!reportLocation) {
+      alert('Please click on the map to place the correct location')
+      return
+    }
+
+    setReportSubmitting(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/photos/${photo.id}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude: reportLocation.lat,
+          longitude: reportLocation.lng,
+          comment: reportComment,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to submit report')
+      }
+
+      setShowReportModal(false)
+      setReportLocation(null)
+      setReportComment('')
+      alert('Thank you! Your report has been submitted for review.')
+    } catch (error) {
+      console.error('Report failed:', error)
+      alert('Failed to submit report')
+    } finally {
+      setReportSubmitting(false)
+    }
+  }
+
   const actualLocation = result
     ? new LatLng(result.actual_location.latitude, result.actual_location.longitude)
     : null
@@ -477,21 +525,29 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
         <p className={`text-red-400 ${distanceClasses}`}>
           {formatDistance(result.distance_km)} away
         </p>
-        {isRanked ? (
-          <button
-            onClick={handleNextRound}
-            className={`${buttonClasses} bg-yellow-600 rounded-lg hover:bg-yellow-500 font-medium`}
-          >
-            {result.game_completed ? 'See Results' : 'Next Round'}
-          </button>
-        ) : (
-          <button
-            onClick={onPlayAgain}
-            className={`${buttonClasses} bg-red-600 rounded-lg hover:bg-red-500 font-medium`}
-          >
-            Play Again
-          </button>
-        )}
+        <div className="flex gap-2 justify-center">
+          {isRanked ? (
+            <button
+              onClick={handleNextRound}
+              className={`${buttonClasses} bg-yellow-600 rounded-lg hover:bg-yellow-500 font-medium`}
+            >
+              {result.game_completed ? 'See Results' : 'Next Round'}
+            </button>
+          ) : (
+            <button
+              onClick={onPlayAgain}
+              className={`${buttonClasses} bg-red-600 rounded-lg hover:bg-red-500 font-medium`}
+            >
+              Play Again
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleOpenReport}
+          className={`${isMobile ? 'mt-1 text-xs' : 'mt-2 text-sm'} text-gray-400 hover:text-white transition-colors`}
+        >
+          Report incorrect location
+        </button>
       </div>
     )
   }
@@ -656,6 +712,100 @@ export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgai
           </div>
         </div>
       </div>
+
+      {/* Report Location Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4">
+          <div className="bg-gray-900 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">Report Incorrect Location</h2>
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="text-gray-400 hover:text-white text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col md:flex-row gap-4 p-4 overflow-hidden min-h-0">
+              <div className="md:w-1/3 flex-shrink-0">
+                <img
+                  src={photo.photo_url}
+                  alt="Photo being reported"
+                  className="w-full h-32 md:h-48 object-cover rounded-lg"
+                />
+                <p className="text-gray-400 text-sm mt-3">
+                  Click on the map to place the correct location for this photo.
+                </p>
+                <div className="mt-3">
+                  <label className="text-gray-300 text-sm block mb-1">Comment (optional)</label>
+                  <textarea
+                    value={reportComment}
+                    onChange={(e) => setReportComment(e.target.value)}
+                    placeholder="Any additional details..."
+                    className="w-full px-3 py-2 bg-gray-800 text-white rounded-lg border border-gray-700
+                               focus:border-red-500 focus:outline-none resize-none text-sm"
+                    rows={3}
+                  />
+                </div>
+                {reportLocation && (
+                  <p className="text-green-400 text-sm mt-2">
+                    Location: {reportLocation.lat.toFixed(5)}, {reportLocation.lng.toFixed(5)}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex-1 min-h-[250px] md:min-h-[400px] rounded-lg overflow-hidden">
+                <MapContainer
+                  center={result ? [result.actual_location.latitude, result.actual_location.longitude] : [42.7302, -73.6788]}
+                  zoom={17}
+                  className="h-full w-full"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <ReportMapClickHandler onMapClick={(latlng) => setReportLocation(latlng)} />
+                  {reportLocation && <Marker position={reportLocation} icon={guessIcon} />}
+                  {result && (
+                    <Marker
+                      position={[result.actual_location.latitude, result.actual_location.longitude]}
+                      icon={actualIcon}
+                    />
+                  )}
+                </MapContainer>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="px-5 py-2 text-gray-400 border border-gray-600 rounded-lg
+                           hover:bg-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitReport}
+                disabled={reportSubmitting || !reportLocation}
+                className="px-5 py-2 bg-red-600 text-white rounded-lg
+                           hover:bg-red-500 transition-colors disabled:opacity-50"
+              >
+                {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
+}
+
+function ReportMapClickHandler({ onMapClick }: { onMapClick: (latlng: LatLng) => void }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng)
+    },
+  })
+  return null
 }

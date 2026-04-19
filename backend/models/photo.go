@@ -133,3 +133,35 @@ type GameDetailsResponse struct {
 	CompletedAt *time.Time  `json:"completed_at,omitempty"`
 	Rounds      []GameRound `json:"rounds"`
 }
+
+// Location report models
+
+type LocationReport struct {
+	ID                 string     `json:"id"`
+	PhotoID            string     `json:"photo_id"`
+	SuggestedLongitude float64    `json:"suggested_longitude"`
+	SuggestedLatitude  float64    `json:"suggested_latitude"`
+	Comment            *string    `json:"comment,omitempty"`
+	Status             string     `json:"status"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ResolvedAt         *time.Time `json:"resolved_at,omitempty"`
+}
+
+type CreateReportRequest struct {
+	Longitude float64 `json:"longitude" binding:"required"`
+	Latitude  float64 `json:"latitude" binding:"required"`
+	Comment   string  `json:"comment"`
+}
+
+type ReportListItem struct {
+	ID                 string     `json:"id"`
+	PhotoID            string     `json:"photo_id"`
+	PhotoURL           string     `json:"photo_url"`
+	CurrentLongitude   float64    `json:"current_longitude"`
+	CurrentLatitude    float64    `json:"current_latitude"`
+	SuggestedLongitude float64    `json:"suggested_longitude"`
+	SuggestedLatitude  float64    `json:"suggested_latitude"`
+	Comment            *string    `json:"comment,omitempty"`
+	Status             string     `json:"status"`
+	CreatedAt          time.Time  `json:"created_at"`
+}

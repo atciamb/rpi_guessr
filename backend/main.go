@@ -49,6 +49,7 @@ func main() {
 		api.GET("/photos/random", photoHandler.GetRandomPhoto)
 		api.GET("/photos/:id", photoHandler.GetPhotoInfo)
 		api.POST("/photos/:id/guess", photoHandler.SubmitGuess)
+		api.POST("/photos/:id/report", photoHandler.SubmitReport)
 
 		// Game routes
 		api.POST("/games", gameHandler.CreateGame)
@@ -66,6 +67,11 @@ func main() {
 			admin.GET("/photos/:id/guesses", photoHandler.GetPhotoGuesses)
 			admin.PUT("/photos/:id/location", photoHandler.UpdatePhotoLocation)
 			admin.DELETE("/photos/:id", photoHandler.DeletePhoto)
+
+			// Report management
+			admin.GET("/reports", photoHandler.ListReports)
+			admin.POST("/reports/:id/accept", photoHandler.AcceptReport)
+			admin.POST("/reports/:id/reject", photoHandler.RejectReport)
 		}
 	}
 

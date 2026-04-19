@@ -320,7 +320,73 @@ func (h *PhotoHandler) UpdatePhotoLocation(c *gin.Context) {
 		return
 	}
 
+	// Recalculate scores for all guesses on this photo
+	if err := h.recalculateScoresForPhoto(photoID, req.Latitude, req.Longitude); err != nil {
+		fmt.Printf("Warning: failed to recalculate scores: %v\n", err)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Location updated"})
+}
+
+// recalculateScoresForPhoto recalculates distances and points for all guesses on a photo,
+// then updates the total_score for any games that included those guesses
+func (h *PhotoHandler) recalculateScoresForPhoto(photoID string, newLat, newLon float64) error {
+	ctx := context.Background()
+
+	// Get all guesses for this photo
+	rows, err := h.db.Pool.Query(ctx, `
+		SELECT id, guess_latitude, guess_longitude, game_id
+		FROM guesses
+		WHERE photo_id = $1
+	`, photoID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Track which games need score updates
+	affectedGames := make(map[string]bool)
+
+	for rows.Next() {
+		var guessID string
+		var guessLat, guessLon float64
+		var gameID *string
+
+		if err := rows.Scan(&guessID, &guessLat, &guessLon, &gameID); err != nil {
+			continue
+		}
+
+		// Recalculate distance and points
+		newDistance := haversineDistance(guessLat, guessLon, newLat, newLon)
+		newPoints := CalculatePoints(newDistance)
+
+		// Update the guess
+		_, err := h.db.Pool.Exec(ctx, `
+			UPDATE guesses SET distance_km = $1, points = $2 WHERE id = $3
+		`, newDistance, newPoints, guessID)
+		if err != nil {
+			fmt.Printf("Warning: failed to update guess %s: %v\n", guessID, err)
+			continue
+		}
+
+		if gameID != nil {
+			affectedGames[*gameID] = true
+		}
+	}
+
+	// Update total_score for each affected game
+	for gameID := range affectedGames {
+		_, err := h.db.Pool.Exec(ctx, `
+			UPDATE games SET total_score = (
+				SELECT COALESCE(SUM(points), 0) FROM guesses WHERE game_id = $1
+			) WHERE id = $1
+		`, gameID)
+		if err != nil {
+			fmt.Printf("Warning: failed to update game %s score: %v\n", gameID, err)
+		}
+	}
+
+	return nil
 }
 
 func (h *PhotoHandler) DeletePhoto(c *gin.Context) {
@@ -347,4 +413,149 @@ func (h *PhotoHandler) DeletePhoto(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Photo deleted"})
+}
+
+// Location Report handlers
+
+func (h *PhotoHandler) SubmitReport(c *gin.Context) {
+	photoID := c.Param("id")
+
+	var req models.CreateReportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	// Verify photo exists
+	var exists bool
+	err := h.db.Pool.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM photos WHERE id = $1)", photoID).Scan(&exists)
+	if err != nil || !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+
+	query := `
+		INSERT INTO location_reports (photo_id, suggested_longitude, suggested_latitude, comment, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`
+
+	var comment *string
+	if req.Comment != "" {
+		comment = &req.Comment
+	}
+
+	var reportID string
+	err = h.db.Pool.QueryRow(
+		context.Background(),
+		query,
+		photoID,
+		req.Longitude,
+		req.Latitude,
+		comment,
+		time.Now(),
+	).Scan(&reportID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to submit report"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"id": reportID, "message": "Report submitted"})
+}
+
+func (h *PhotoHandler) ListReports(c *gin.Context) {
+	status := c.DefaultQuery("status", "pending")
+
+	query := `
+		SELECT r.id, r.photo_id, p.s3_key, p.longitude, p.latitude,
+		       r.suggested_longitude, r.suggested_latitude, r.comment, r.status, r.created_at
+		FROM location_reports r
+		JOIN photos p ON r.photo_id = p.id
+		WHERE r.status = $1
+		ORDER BY r.created_at DESC
+	`
+
+	rows, err := h.db.Pool.Query(context.Background(), query, status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch reports"})
+		return
+	}
+	defer rows.Close()
+
+	var reports []models.ReportListItem
+	for rows.Next() {
+		var report models.ReportListItem
+		var s3Key string
+		if err := rows.Scan(
+			&report.ID, &report.PhotoID, &s3Key,
+			&report.CurrentLongitude, &report.CurrentLatitude,
+			&report.SuggestedLongitude, &report.SuggestedLatitude,
+			&report.Comment, &report.Status, &report.CreatedAt,
+		); err != nil {
+			continue
+		}
+		report.PhotoURL = h.storage.GetURL(s3Key)
+		reports = append(reports, report)
+	}
+
+	if reports == nil {
+		reports = []models.ReportListItem{}
+	}
+
+	c.JSON(http.StatusOK, reports)
+}
+
+func (h *PhotoHandler) AcceptReport(c *gin.Context) {
+	reportID := c.Param("id")
+
+	// Get report details
+	var photoID string
+	var suggestedLon, suggestedLat float64
+	query := `SELECT photo_id, suggested_longitude, suggested_latitude FROM location_reports WHERE id = $1 AND status = 'pending'`
+	err := h.db.Pool.QueryRow(context.Background(), query, reportID).Scan(&photoID, &suggestedLon, &suggestedLat)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Report not found or already resolved"})
+		return
+	}
+
+	// Update photo location
+	updatePhoto := `UPDATE photos SET longitude = $1, latitude = $2, updated_at = $3 WHERE id = $4`
+	_, err = h.db.Pool.Exec(context.Background(), updatePhoto, suggestedLon, suggestedLat, time.Now(), photoID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update photo location"})
+		return
+	}
+
+	// Recalculate scores for all guesses on this photo
+	if err := h.recalculateScoresForPhoto(photoID, suggestedLat, suggestedLon); err != nil {
+		fmt.Printf("Warning: failed to recalculate scores: %v\n", err)
+	}
+
+	// Mark report as accepted
+	updateReport := `UPDATE location_reports SET status = 'accepted', resolved_at = $1 WHERE id = $2`
+	_, err = h.db.Pool.Exec(context.Background(), updateReport, time.Now(), reportID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update report status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Report accepted and location updated"})
+}
+
+func (h *PhotoHandler) RejectReport(c *gin.Context) {
+	reportID := c.Param("id")
+
+	query := `UPDATE location_reports SET status = 'rejected', resolved_at = $1 WHERE id = $2 AND status = 'pending'`
+	result, err := h.db.Pool.Exec(context.Background(), query, time.Now(), reportID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reject report"})
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Report not found or already resolved"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Report rejected"})
 }

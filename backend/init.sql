@@ -44,3 +44,18 @@ CREATE TABLE IF NOT EXISTS guesses (
 CREATE INDEX IF NOT EXISTS idx_guesses_photo_id ON guesses(photo_id);
 CREATE INDEX IF NOT EXISTS idx_guesses_game_id ON guesses(game_id);
 CREATE INDEX IF NOT EXISTS idx_guesses_created_at ON guesses(created_at);
+
+CREATE TABLE IF NOT EXISTS location_reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    photo_id UUID NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    suggested_longitude DOUBLE PRECISION NOT NULL,
+    suggested_latitude DOUBLE PRECISION NOT NULL,
+    comment TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_reports_photo_id ON location_reports(photo_id);
+CREATE INDEX IF NOT EXISTS idx_location_reports_status ON location_reports(status);
+CREATE INDEX IF NOT EXISTS idx_location_reports_created_at ON location_reports(created_at);
