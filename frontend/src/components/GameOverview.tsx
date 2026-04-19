@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, useMapEvents } from 'react-leaflet'
 import { LatLng, Icon } from 'leaflet'
 import { API_BASE } from '../config'
 
@@ -10,6 +10,7 @@ interface GameOverviewProps {
 
 interface GameRound {
   round: number
+  photo_id: string
   photo_url: string
   guess_longitude: number
   guess_latitude: number
@@ -45,6 +46,25 @@ const actualIcon = new Icon({
   iconSize: [32, 32],
   iconAnchor: [16, 32],
 })
+
+const suggestedIcon = new Icon({
+  iconUrl: 'data:image/svg+xml,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+      <path fill="#dc2626" d="M12 0C7.58 0 4 3.58 4 8c0 5.25 8 13 8 13s8-7.75 8-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>
+    </svg>
+  `),
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+})
+
+function ReportMapClickHandler({ onMapClick }: { onMapClick: (latlng: LatLng) => void }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng)
+    },
+  })
+  return null
+}
 
 function RoundMap({ round }: { round: GameRound }) {
   const guessPos = new LatLng(round.guess_latitude, round.guess_longitude)
@@ -85,6 +105,12 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
   const [expandedRound, setExpandedRound] = useState<number | null>(null)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
+  // Report state
+  const [reportingRound, setReportingRound] = useState<GameRound | null>(null)
+  const [reportLocation, setReportLocation] = useState<LatLng | null>(null)
+  const [reportComment, setReportComment] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+
   useEffect(() => {
     const fetchGameDetails = async () => {
       try {
@@ -119,6 +145,46 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const handleOpenReport = (round: GameRound) => {
+    setReportingRound(round)
+    setReportLocation(new LatLng(round.actual_latitude, round.actual_longitude))
+    setReportComment('')
+  }
+
+  const handleSubmitReport = async () => {
+    if (!reportingRound || !reportLocation) {
+      alert('Please click on the map to place the correct location')
+      return
+    }
+
+    setReportSubmitting(true)
+    try {
+      const response = await fetch(`${API_BASE}/api/photos/${reportingRound.photo_id}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latitude: reportLocation.lat,
+          longitude: reportLocation.lng,
+          comment: reportComment,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to submit report')
+      }
+
+      setReportingRound(null)
+      setReportLocation(null)
+      setReportComment('')
+      alert('Thank you! Your report has been submitted for review.')
+    } catch (error) {
+      console.error('Report failed:', error)
+      alert('Failed to submit report')
+    } finally {
+      setReportSubmitting(false)
+    }
   }
 
   if (loading) {
@@ -235,15 +301,23 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
                   </div>
                   {/* Map */}
                   <RoundMap round={round} />
-                  <div className="mt-2 flex justify-center gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-blue-500 rounded-full" />
-                      <span className="text-gray-400">Your guess</span>
+                  <div className="mt-2 flex justify-between items-center">
+                    <div className="flex gap-6 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full" />
+                        <span className="text-gray-400">Your guess</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-green-500 rounded-full" />
+                        <span className="text-gray-400">Actual location</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-green-500 rounded-full" />
-                      <span className="text-gray-400">Actual location</span>
-                    </div>
+                    <button
+                      onClick={() => handleOpenReport(round)}
+                      className="text-sm text-red-400 hover:text-red-300 transition-colors underline"
+                    >
+                      Report location
+                    </button>
                   </div>
                 </div>
               )}
@@ -271,6 +345,92 @@ export default function GameOverview({ gameId, onBack }: GameOverviewProps) {
             className="max-w-full max-h-full object-contain"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* Report Location Modal */}
+      {reportingRound && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4" style={{ zIndex: 10000 }}>
+          <div className="bg-gray-900 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col" style={{ zIndex: 10001 }}>
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-white">Report Incorrect Location</h2>
+              <button
+                onClick={() => setReportingRound(null)}
+                className="text-gray-400 hover:text-white text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col md:flex-row gap-4 p-4 overflow-hidden min-h-0">
+              <div className="md:w-1/3 flex-shrink-0">
+                <img
+                  src={reportingRound.photo_url}
+                  alt="Photo being reported"
+                  className="w-full h-32 md:h-48 object-cover rounded-lg"
+                />
+                <p className="text-gray-400 text-sm mt-3">
+                  Click on the map to place the correct location for this photo.
+                </p>
+                <div className="mt-3">
+                  <label className="text-gray-300 text-sm block mb-1">Comment (optional)</label>
+                  <textarea
+                    value={reportComment}
+                    onChange={(e) => setReportComment(e.target.value)}
+                    placeholder="Any additional details..."
+                    className="w-full px-3 py-2 bg-gray-800 text-white rounded-lg border border-gray-700
+                               focus:border-red-500 focus:outline-none resize-none text-sm"
+                    rows={3}
+                  />
+                </div>
+                {reportLocation && (
+                  <p className="text-green-400 text-sm mt-2">
+                    Location: {reportLocation.lat.toFixed(5)}, {reportLocation.lng.toFixed(5)}
+                  </p>
+                )}
+                <p className="text-yellow-500/80 text-xs mt-3">
+                  Note: If accepted, leaderboard scores will be recalculated based on the corrected location.
+                </p>
+              </div>
+
+              <div className="flex-1 min-h-[250px] md:min-h-[400px] rounded-lg overflow-hidden">
+                <MapContainer
+                  center={[reportingRound.actual_latitude, reportingRound.actual_longitude]}
+                  zoom={17}
+                  className="h-full w-full"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <ReportMapClickHandler onMapClick={(latlng) => setReportLocation(latlng)} />
+                  {reportLocation && <Marker position={reportLocation} icon={suggestedIcon} />}
+                  <Marker
+                    position={[reportingRound.actual_latitude, reportingRound.actual_longitude]}
+                    icon={actualIcon}
+                  />
+                </MapContainer>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-3">
+              <button
+                onClick={() => setReportingRound(null)}
+                className="px-5 py-2 text-gray-400 border border-gray-600 rounded-lg
+                           hover:bg-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitReport}
+                disabled={reportSubmitting || !reportLocation}
+                className="px-5 py-2 bg-red-600 text-white rounded-lg
+                           hover:bg-red-500 transition-colors disabled:opacity-50"
+              >
+                {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

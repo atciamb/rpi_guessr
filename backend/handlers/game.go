@@ -315,7 +315,7 @@ func (h *GameHandler) GetGameDetails(c *gin.Context) {
 
 	// Get all guesses for this game with photo info
 	guessQuery := `
-		SELECT p.s3_key, g.guess_longitude, g.guess_latitude,
+		SELECT p.id, p.s3_key, g.guess_longitude, g.guess_latitude,
 		       p.longitude, p.latitude, g.distance_km, g.points
 		FROM guesses g
 		JOIN photos p ON g.photo_id = p.id
@@ -334,7 +334,7 @@ func (h *GameHandler) GetGameDetails(c *gin.Context) {
 	for rows.Next() {
 		var r models.GameRound
 		var s3Key string
-		if err := rows.Scan(&s3Key, &r.GuessLongitude, &r.GuessLatitude,
+		if err := rows.Scan(&r.PhotoID, &s3Key, &r.GuessLongitude, &r.GuessLatitude,
 			&r.ActualLongitude, &r.ActualLatitude, &r.DistanceKm, &r.Points); err != nil {
 			continue
 		}

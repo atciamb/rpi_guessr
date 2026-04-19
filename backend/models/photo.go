@@ -115,14 +115,15 @@ type LeaderboardResponse struct {
 }
 
 type GameRound struct {
-	Round          int     `json:"round"`
-	PhotoURL       string  `json:"photo_url"`
-	GuessLongitude float64 `json:"guess_longitude"`
-	GuessLatitude  float64 `json:"guess_latitude"`
+	Round           int     `json:"round"`
+	PhotoID         string  `json:"photo_id"`
+	PhotoURL        string  `json:"photo_url"`
+	GuessLongitude  float64 `json:"guess_longitude"`
+	GuessLatitude   float64 `json:"guess_latitude"`
 	ActualLongitude float64 `json:"actual_longitude"`
 	ActualLatitude  float64 `json:"actual_latitude"`
-	DistanceKm     float64 `json:"distance_km"`
-	Points         int     `json:"points"`
+	DistanceKm      float64 `json:"distance_km"`
+	Points          int     `json:"points"`
 }
 
 type GameDetailsResponse struct {
