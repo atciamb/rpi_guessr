@@ -309,6 +309,35 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
     return `${km.toFixed(1)} km`
   }
 
+  const mapContent = (showResizeHandler: boolean) => (
+    <>
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
+      {showResizeHandler && <MapResizeHandler expanded={mapHovered} />}
+      {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
+      {guess && <Marker position={guess} icon={guessIcon} />}
+      {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
+      {result?.other_guesses?.slice(1).map((g, i) => (
+        <Marker
+          key={i}
+          position={[g.latitude, g.longitude]}
+          icon={otherGuessIcon}
+        />
+      ))}
+      {guess && actualLocation && (
+        <Polyline
+          positions={[guess, actualLocation]}
+          color="#dc2626"
+          weight={3}
+          dashArray="10, 10"
+        />
+      )}
+    </>
+  )
+
   return (
     <>
       {/* Mobile Layout */}
@@ -361,30 +390,7 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
             className="w-full h-full"
             zoomControl={false}
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
-            {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
-
-            {guess && <Marker position={guess} icon={guessIcon} />}
-            {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
-            {result?.other_guesses?.map((g, i) => (
-              <Marker
-                key={i}
-                position={[g.latitude, g.longitude]}
-                icon={otherGuessIcon}
-              />
-            ))}
-            {guess && actualLocation && (
-              <Polyline
-                positions={[guess, actualLocation]}
-                color="#dc2626"
-                weight={3}
-                dashArray="10, 10"
-              />
-            )}
+            {mapContent(false)}
           </MapContainer>
         </div>
 
@@ -481,31 +487,7 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
               className="w-full h-full"
               zoomControl={false}
             >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <MapClickHandler onMapClick={handleMapClick} disabled={!!result} />
-              <MapResizeHandler expanded={mapHovered} />
-              {result && <FitBoundsHandler guess={guess} actual={actualLocation} />}
-
-              {guess && <Marker position={guess} icon={guessIcon} />}
-              {actualLocation && <Marker position={actualLocation} icon={actualIcon} />}
-              {result?.other_guesses?.map((g, i) => (
-                <Marker
-                  key={i}
-                  position={[g.latitude, g.longitude]}
-                  icon={otherGuessIcon}
-                />
-              ))}
-              {guess && actualLocation && (
-                <Polyline
-                  positions={[guess, actualLocation]}
-                  color="#dc2626"
-                  weight={3}
-                  dashArray="10, 10"
-                />
-              )}
+              {mapContent(true)}
             </MapContainer>
           </div>
         </div>
