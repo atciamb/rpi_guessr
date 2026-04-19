@@ -53,3 +53,62 @@ type PhotoListItem struct {
 	Latitude  float64   `json:"latitude"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// Game models
+
+type Game struct {
+	ID           string     `json:"id"`
+	PlayerName   string     `json:"player_name"`
+	Mode         int        `json:"mode"` // 5, 10, or 20 rounds
+	TotalScore   int        `json:"total_score"`
+	RoundsPlayed int        `json:"rounds_played"`
+	Completed    bool       `json:"completed"`
+	CreatedAt    time.Time  `json:"created_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+}
+
+type CreateGameRequest struct {
+	PlayerName string `json:"player_name" binding:"required"`
+	Mode       int    `json:"mode" binding:"required"`
+}
+
+type GameResponse struct {
+	ID           string     `json:"id"`
+	PlayerName   string     `json:"player_name"`
+	Mode         int        `json:"mode"`
+	TotalScore   int        `json:"total_score"`
+	RoundsPlayed int        `json:"rounds_played"`
+	Completed    bool       `json:"completed"`
+	CurrentPhoto *RandomPhotoResponse `json:"current_photo,omitempty"`
+}
+
+type GameGuessRequest struct {
+	PhotoID   string  `json:"photo_id" binding:"required"`
+	Longitude float64 `json:"longitude" binding:"required"`
+	Latitude  float64 `json:"latitude" binding:"required"`
+}
+
+type GameGuessResponse struct {
+	DistanceKm     float64 `json:"distance_km"`
+	Points         int     `json:"points"`
+	TotalScore     int     `json:"total_score"`
+	RoundsPlayed   int     `json:"rounds_played"`
+	GameCompleted  bool    `json:"game_completed"`
+	ActualLocation struct {
+		Longitude float64 `json:"longitude"`
+		Latitude  float64 `json:"latitude"`
+	} `json:"actual_location"`
+}
+
+type LeaderboardEntry struct {
+	Rank        int       `json:"rank"`
+	PlayerName  string    `json:"player_name"`
+	TotalScore  int       `json:"total_score"`
+	CompletedAt time.Time `json:"completed_at"`
+}
+
+type LeaderboardResponse struct {
+	Mode    int                `json:"mode"`
+	Period  string             `json:"period"`
+	Entries []LeaderboardEntry `json:"entries"`
+}

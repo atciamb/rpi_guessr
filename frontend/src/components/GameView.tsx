@@ -1,18 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline } from 'react-leaflet'
 import { LatLng, Icon } from 'leaflet'
-import type { PhotoData } from '../App'
+import type { PhotoData, GameData, GameMode, RoundResult } from '../App'
 import { API_BASE } from '../config'
 
 interface GameViewProps {
   photo: PhotoData
+  gameMode: GameMode
+  gameData: GameData | null
   onBack: () => void
   onPlayAgain: () => void
+  onRankedGuessComplete: (result: RoundResult) => void
 }
 
 interface GuessResult {
   distance_km: number
   points: number
+  total_score?: number
+  rounds_played?: number
+  game_completed?: boolean
   actual_location: {
     longitude: number
     latitude: number
@@ -243,7 +249,7 @@ function useDragToPan() {
   }
 }
 
-export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) {
+export default function GameView({ photo, gameMode, gameData, onBack, onPlayAgain, onRankedGuessComplete }: GameViewProps) {
   const [guess, setGuess] = useState<LatLng | null>(null)
   const [mapHovered, setMapHovered] = useState(false)
   const [result, setResult] = useState<GuessResult | null>(null)
@@ -251,6 +257,10 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
 
   const mobilePan = useDragToPan()
   const desktopPan = useDragToPan()
+
+  const isRanked = gameMode !== 'freeplay'
+  const currentRound = gameData ? gameData.rounds_played + 1 : 1
+  const totalRounds = typeof gameMode === 'number' ? gameMode : 0
 
   useEffect(() => {
     setGuess(null)
@@ -275,14 +285,30 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
     setSubmitting(true)
 
     try {
-      const response = await fetch(`${API_BASE}/api/photos/${photo.id}/guess`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latitude: guess.lat,
-          longitude: guess.lng,
-        }),
-      })
+      let response: Response
+
+      if (isRanked && gameData) {
+        // Ranked game - use game API
+        response = await fetch(`${API_BASE}/api/games/${gameData.id}/guess`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photo_id: photo.id,
+            latitude: guess.lat,
+            longitude: guess.lng,
+          }),
+        })
+      } else {
+        // Freeplay - use original API
+        response = await fetch(`${API_BASE}/api/photos/${photo.id}/guess`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: guess.lat,
+            longitude: guess.lng,
+          }),
+        })
+      }
 
       if (!response.ok) {
         throw new Error('Failed to submit guess')
@@ -296,6 +322,16 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
       alert('Failed to submit guess')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleNextRound = () => {
+    if (result) {
+      onRankedGuessComplete({
+        distance_km: result.distance_km,
+        points: result.points,
+        actual_location: result.actual_location,
+      })
     }
   }
 
@@ -339,6 +375,66 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
     </>
   )
 
+  const renderResultOverlay = (isMobile: boolean) => {
+    if (!result) return null
+
+    const sizeClasses = isMobile
+      ? "px-4 py-2 text-2xl"
+      : "px-8 py-4 text-4xl"
+    const distanceClasses = isMobile ? "text-sm" : "text-lg"
+    const buttonClasses = isMobile
+      ? "mt-2 px-4 py-1.5 text-sm"
+      : "mt-3 px-6 py-2"
+
+    return (
+      <div className={`absolute top-2 md:top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
+                      rounded-xl text-center ${isMobile ? 'px-4 py-2' : 'px-8 py-4'}`}>
+        {isRanked && (
+          <p className="text-xs text-gray-400 mb-1">
+            Round {currentRound} of {totalRounds}
+          </p>
+        )}
+        <p className={`font-bold text-yellow-400 ${isMobile ? 'text-2xl' : 'text-4xl'}`}>
+          {result.points.toLocaleString()} pts
+        </p>
+        {isRanked && result.total_score !== undefined && (
+          <p className="text-sm text-gray-300">
+            Total: {result.total_score.toLocaleString()} pts
+          </p>
+        )}
+        <p className={`text-red-400 ${distanceClasses}`}>
+          {formatDistance(result.distance_km)} away
+        </p>
+        {isRanked ? (
+          <button
+            onClick={handleNextRound}
+            className={`${buttonClasses} bg-yellow-600 rounded-lg hover:bg-yellow-500 font-medium`}
+          >
+            {result.game_completed ? 'See Results' : 'Next Round'}
+          </button>
+        ) : (
+          <button
+            onClick={onPlayAgain}
+            className={`${buttonClasses} bg-red-600 rounded-lg hover:bg-red-500 font-medium`}
+          >
+            Play Again
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const renderRoundIndicator = (isMobile: boolean) => {
+    if (!isRanked) return null
+
+    return (
+      <div className={`absolute ${isMobile ? 'top-2 right-2' : 'top-4 right-4'} z-50
+                      bg-yellow-600 text-white px-3 py-1 rounded-lg font-bold`}>
+        {currentRound}/{totalRounds}
+      </div>
+    )
+  }
+
   return (
     <>
       {/* Mobile Layout */}
@@ -352,24 +448,8 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
           ← Back
         </button>
 
-        {/* Result overlay - mobile */}
-        {result && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
-                          px-4 py-2 rounded-xl text-center">
-            <p className="text-2xl font-bold text-yellow-400">
-              {result.points.toLocaleString()} pts
-            </p>
-            <p className="text-sm text-red-400">
-              {formatDistance(result.distance_km)} away
-            </p>
-            <button
-              onClick={onPlayAgain}
-              className="mt-2 px-4 py-1.5 bg-red-600 rounded-lg hover:bg-red-500 font-medium text-sm"
-            >
-              Play Again
-            </button>
-          </div>
-        )}
+        {renderRoundIndicator(true)}
+        {renderResultOverlay(true)}
 
         {/* Photo - top portion (drag to pan) */}
         <div
@@ -423,24 +503,8 @@ export default function GameView({ photo, onBack, onPlayAgain }: GameViewProps) 
           ← Back
         </button>
 
-        {/* Result overlay */}
-        {result && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-black/80 text-white
-                          px-8 py-4 rounded-xl text-center">
-            <p className="text-4xl font-bold text-yellow-400">
-              {result.points.toLocaleString()} pts
-            </p>
-            <p className="text-lg text-red-400">
-              {formatDistance(result.distance_km)} away
-            </p>
-            <button
-              onClick={onPlayAgain}
-              className="mt-3 px-6 py-2 bg-red-600 rounded-lg hover:bg-red-500 font-medium"
-            >
-              Play Again
-            </button>
-          </div>
-        )}
+        {renderRoundIndicator(false)}
+        {renderResultOverlay(false)}
 
         {/* Photo display - full screen, drag to pan */}
         <div
