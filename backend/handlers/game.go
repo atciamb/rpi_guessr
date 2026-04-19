@@ -245,7 +245,7 @@ func (h *GameHandler) GetLeaderboard(c *gin.Context) {
 
 	if timeFilter.IsZero() {
 		query = `
-			SELECT player_name, total_score, completed_at
+			SELECT id, player_name, total_score, completed_at
 			FROM games
 			WHERE mode = $1 AND completed = true
 			ORDER BY total_score DESC
@@ -254,7 +254,7 @@ func (h *GameHandler) GetLeaderboard(c *gin.Context) {
 		args = []interface{}{mode}
 	} else {
 		query = `
-			SELECT player_name, total_score, completed_at
+			SELECT id, player_name, total_score, completed_at
 			FROM games
 			WHERE mode = $1 AND completed = true AND completed_at >= $2
 			ORDER BY total_score DESC
@@ -275,7 +275,7 @@ func (h *GameHandler) GetLeaderboard(c *gin.Context) {
 
 	for rows.Next() {
 		var entry models.LeaderboardEntry
-		if err := rows.Scan(&entry.PlayerName, &entry.TotalScore, &entry.CompletedAt); err != nil {
+		if err := rows.Scan(&entry.GameID, &entry.PlayerName, &entry.TotalScore, &entry.CompletedAt); err != nil {
 			continue
 		}
 		entry.Rank = rank
@@ -292,4 +292,61 @@ func (h *GameHandler) GetLeaderboard(c *gin.Context) {
 		Period:  period,
 		Entries: entries,
 	})
+}
+
+func (h *GameHandler) GetGameDetails(c *gin.Context) {
+	gameID := c.Param("id")
+
+	// Get game info
+	gameQuery := `
+		SELECT id, player_name, mode, total_score, completed_at
+		FROM games
+		WHERE id = $1 AND completed = true
+	`
+
+	var response models.GameDetailsResponse
+	err := h.db.Pool.QueryRow(context.Background(), gameQuery, gameID).Scan(
+		&response.ID, &response.PlayerName, &response.Mode, &response.TotalScore, &response.CompletedAt,
+	)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+
+	// Get all guesses for this game with photo info
+	guessQuery := `
+		SELECT p.s3_key, g.guess_longitude, g.guess_latitude,
+		       p.longitude, p.latitude, g.distance_km, g.points
+		FROM guesses g
+		JOIN photos p ON g.photo_id = p.id
+		WHERE g.game_id = $1
+		ORDER BY g.created_at ASC
+	`
+
+	rows, err := h.db.Pool.Query(context.Background(), guessQuery, gameID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch game rounds"})
+		return
+	}
+	defer rows.Close()
+
+	round := 1
+	for rows.Next() {
+		var r models.GameRound
+		var s3Key string
+		if err := rows.Scan(&s3Key, &r.GuessLongitude, &r.GuessLatitude,
+			&r.ActualLongitude, &r.ActualLatitude, &r.DistanceKm, &r.Points); err != nil {
+			continue
+		}
+		r.Round = round
+		r.PhotoURL = h.storage.GetURL(s3Key)
+		response.Rounds = append(response.Rounds, r)
+		round++
+	}
+
+	if response.Rounds == nil {
+		response.Rounds = []models.GameRound{}
+	}
+
+	c.JSON(http.StatusOK, response)
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { API_BASE } from '../config'
+import GameOverview from './GameOverview'
 
 interface LeaderboardProps {
   onBack: () => void
@@ -7,6 +8,7 @@ interface LeaderboardProps {
 
 interface LeaderboardEntry {
   rank: number
+  game_id: string
   player_name: string
   total_score: number
   completed_at: string
@@ -31,6 +33,7 @@ export default function Leaderboard({ onBack }: LeaderboardProps) {
   const [period, setPeriod] = useState<string>('7d')
   const [data, setData] = useState<LeaderboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -54,6 +57,16 @@ export default function Leaderboard({ onBack }: LeaderboardProps) {
   const formatDate = (dateStr: string): string => {
     const date = new Date(dateStr)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  // Show game overview if a game is selected
+  if (selectedGameId) {
+    return (
+      <GameOverview
+        gameId={selectedGameId}
+        onBack={() => setSelectedGameId(null)}
+      />
+    )
   }
 
   return (
@@ -128,8 +141,9 @@ export default function Leaderboard({ onBack }: LeaderboardProps) {
               <tbody>
                 {data.entries.map((entry) => (
                   <tr
-                    key={`${entry.rank}-${entry.player_name}-${entry.completed_at}`}
-                    className="border-t border-gray-700 hover:bg-gray-700/50 transition-colors"
+                    key={entry.game_id}
+                    onClick={() => setSelectedGameId(entry.game_id)}
+                    className="border-t border-gray-700 hover:bg-gray-700/50 transition-colors cursor-pointer"
                   >
                     <td className="py-3 px-4">
                       {entry.rank <= 3 ? (
@@ -164,7 +178,7 @@ export default function Leaderboard({ onBack }: LeaderboardProps) {
 
         {/* Max score info */}
         <p className="text-center text-gray-500 text-sm mt-4">
-          Max possible: {(mode * 5000).toLocaleString()} points
+          Max possible: {(mode * 5000).toLocaleString()} points • Click a row to view details
         </p>
       </div>
     </div>

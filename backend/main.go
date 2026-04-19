@@ -54,6 +54,7 @@ func main() {
 		api.POST("/games", gameHandler.CreateGame)
 		api.GET("/games/:id", gameHandler.GetGame)
 		api.POST("/games/:id/guess", gameHandler.SubmitGuess)
+		api.GET("/games/:id/details", gameHandler.GetGameDetails)
 		api.GET("/leaderboard", gameHandler.GetLeaderboard)
 
 		// Admin routes (require auth)

@@ -102,6 +102,7 @@ type GameGuessResponse struct {
 
 type LeaderboardEntry struct {
 	Rank        int       `json:"rank"`
+	GameID      string    `json:"game_id"`
 	PlayerName  string    `json:"player_name"`
 	TotalScore  int       `json:"total_score"`
 	CompletedAt time.Time `json:"completed_at"`
@@ -111,4 +112,24 @@ type LeaderboardResponse struct {
 	Mode    int                `json:"mode"`
 	Period  string             `json:"period"`
 	Entries []LeaderboardEntry `json:"entries"`
+}
+
+type GameRound struct {
+	Round          int     `json:"round"`
+	PhotoURL       string  `json:"photo_url"`
+	GuessLongitude float64 `json:"guess_longitude"`
+	GuessLatitude  float64 `json:"guess_latitude"`
+	ActualLongitude float64 `json:"actual_longitude"`
+	ActualLatitude  float64 `json:"actual_latitude"`
+	DistanceKm     float64 `json:"distance_km"`
+	Points         int     `json:"points"`
+}
+
+type GameDetailsResponse struct {
+	ID          string      `json:"id"`
+	PlayerName  string      `json:"player_name"`
+	Mode        int         `json:"mode"`
+	TotalScore  int         `json:"total_score"`
+	CompletedAt *time.Time  `json:"completed_at,omitempty"`
+	Rounds      []GameRound `json:"rounds"`
 }
