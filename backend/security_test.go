@@ -46,6 +46,30 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// Seed test photos
+	fmt.Println("Seeding test photos...")
+	seedCmd := exec.Command("docker", "compose", "-f", "docker-compose.local.yml", "exec", "-T", "db",
+		"psql", "-U", "postgres", "-d", "rpi_guessr", "-c", `
+		INSERT INTO photos (id, s3_key, s3_bucket, longitude, latitude, created_at, updated_at)
+		VALUES
+			('11111111-1111-1111-1111-111111111111', 'test/photo1.jpg', 'test-bucket', -73.6800, 42.7300, NOW(), NOW()),
+			('22222222-2222-2222-2222-222222222222', 'test/photo2.jpg', 'test-bucket', -73.6900, 42.7200, NOW(), NOW()),
+			('33333333-3333-3333-3333-333333333333', 'test/photo3.jpg', 'test-bucket', -73.7000, 42.7100, NOW(), NOW()),
+			('44444444-4444-4444-4444-444444444444', 'test/photo4.jpg', 'test-bucket', -73.7100, 42.7000, NOW(), NOW()),
+			('55555555-5555-5555-5555-555555555555', 'test/photo5.jpg', 'test-bucket', -73.7200, 42.6900, NOW(), NOW()),
+			('66666666-6666-6666-6666-666666666666', 'test/photo6.jpg', 'test-bucket', -73.7300, 42.6800, NOW(), NOW()),
+			('77777777-7777-7777-7777-777777777777', 'test/photo7.jpg', 'test-bucket', -73.7400, 42.6700, NOW(), NOW()),
+			('88888888-8888-8888-8888-888888888888', 'test/photo8.jpg', 'test-bucket', -73.7500, 42.6600, NOW(), NOW()),
+			('99999999-9999-9999-9999-999999999999', 'test/photo9.jpg', 'test-bucket', -73.7600, 42.6500, NOW(), NOW()),
+			('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'test/photo10.jpg', 'test-bucket', -73.7700, 42.6400, NOW(), NOW())
+		ON CONFLICT (id) DO NOTHING;
+	`)
+	seedCmd.Stdout = os.Stdout
+	seedCmd.Stderr = os.Stderr
+	if err := seedCmd.Run(); err != nil {
+		fmt.Printf("Warning: Failed to seed test photos: %v\n", err)
+	}
+
 	fmt.Println("Server is ready, running tests...")
 
 	// Run tests
