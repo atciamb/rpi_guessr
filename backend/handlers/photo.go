@@ -78,30 +78,6 @@ func (h *PhotoHandler) GetRandomPhoto(c *gin.Context) {
 	})
 }
 
-func (h *PhotoHandler) GetPhotoInfo(c *gin.Context) {
-	photoID := c.Param("id")
-
-	query := `
-		SELECT id, longitude, latitude, created_at
-		FROM photos
-		WHERE id = $1
-	`
-
-	var photo models.PhotoInfoResponse
-	err := h.db.Pool.QueryRow(context.Background(), query, photoID).Scan(
-		&photo.ID,
-		&photo.Longitude,
-		&photo.Latitude,
-		&photo.CreatedAt,
-	)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
-		return
-	}
-
-	c.JSON(http.StatusOK, photo)
-}
-
 func (h *PhotoHandler) UploadPhoto(c *gin.Context) {
 	file, header, err := c.Request.FormFile("photo")
 	if err != nil {

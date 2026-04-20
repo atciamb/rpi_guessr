@@ -47,7 +47,6 @@ func main() {
 	{
 		// Public routes
 		api.GET("/photos/random", photoHandler.GetRandomPhoto)
-		api.GET("/photos/:id", photoHandler.GetPhotoInfo)
 		api.POST("/photos/:id/guess", photoHandler.SubmitGuess)
 		api.POST("/photos/:id/report", photoHandler.SubmitReport)
 

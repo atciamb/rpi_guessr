@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS games (
     total_score INT NOT NULL DEFAULT 0,
     rounds_played INT NOT NULL DEFAULT 0,
     completed BOOLEAN NOT NULL DEFAULT FALSE,
+    current_photo_id UUID REFERENCES photos(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE
 );

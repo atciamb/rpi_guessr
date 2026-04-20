@@ -43,25 +43,26 @@ func (h *GameHandler) CreateGame(c *gin.Context) {
 		return
 	}
 
+	// Get a random photo for the first round
+	photoQuery := `SELECT id, s3_key FROM photos ORDER BY RANDOM() LIMIT 1`
+	var photoID, s3Key string
+	err := h.db.Pool.QueryRow(context.Background(), photoQuery).Scan(&photoID, &s3Key)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "no photos available"})
+		return
+	}
+
+	// Create game with the assigned photo
 	query := `
-		INSERT INTO games (player_name, mode, created_at)
-		VALUES ($1, $2, $3)
+		INSERT INTO games (player_name, mode, current_photo_id, created_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`
 
 	var gameID string
-	err := h.db.Pool.QueryRow(context.Background(), query, req.PlayerName, req.Mode, time.Now()).Scan(&gameID)
+	err = h.db.Pool.QueryRow(context.Background(), query, req.PlayerName, req.Mode, photoID, time.Now()).Scan(&gameID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create game"})
-		return
-	}
-
-	// Get a random photo for the first round
-	photoQuery := `SELECT id, s3_key FROM photos ORDER BY RANDOM() LIMIT 1`
-	var photoID, s3Key string
-	err = h.db.Pool.QueryRow(context.Background(), photoQuery).Scan(&photoID, &s3Key)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "no photos available"})
 		return
 	}
 
@@ -83,14 +84,19 @@ func (h *GameHandler) GetGame(c *gin.Context) {
 	gameID := c.Param("id")
 
 	query := `
-		SELECT id, player_name, mode, total_score, rounds_played, completed, created_at, completed_at
-		FROM games WHERE id = $1
+		SELECT g.id, g.player_name, g.mode, g.total_score, g.rounds_played, g.completed,
+		       g.created_at, g.completed_at, g.current_photo_id, p.s3_key
+		FROM games g
+		LEFT JOIN photos p ON g.current_photo_id = p.id
+		WHERE g.id = $1
 	`
 
 	var game models.Game
+	var currentPhotoID, s3Key *string
 	err := h.db.Pool.QueryRow(context.Background(), query, gameID).Scan(
 		&game.ID, &game.PlayerName, &game.Mode, &game.TotalScore,
 		&game.RoundsPlayed, &game.Completed, &game.CreatedAt, &game.CompletedAt,
+		&currentPhotoID, &s3Key,
 	)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
@@ -106,20 +112,11 @@ func (h *GameHandler) GetGame(c *gin.Context) {
 		Completed:    game.Completed,
 	}
 
-	// If game is not completed, get next photo (excluding already guessed photos)
-	if !game.Completed {
-		photoQuery := `
-			SELECT id, s3_key FROM photos
-			WHERE id NOT IN (SELECT photo_id FROM guesses WHERE game_id = $1)
-			ORDER BY RANDOM() LIMIT 1
-		`
-		var photoID, s3Key string
-		err = h.db.Pool.QueryRow(context.Background(), photoQuery, gameID).Scan(&photoID, &s3Key)
-		if err == nil {
-			response.CurrentPhoto = &models.RandomPhotoResponse{
-				ID:       photoID,
-				PhotoURL: h.storage.GetURL(s3Key),
-			}
+	// Return the assigned current photo if game is not completed
+	if !game.Completed && currentPhotoID != nil && s3Key != nil {
+		response.CurrentPhoto = &models.RandomPhotoResponse{
+			ID:       *currentPhotoID,
+			PhotoURL: h.storage.GetURL(*s3Key),
 		}
 	}
 
@@ -135,11 +132,12 @@ func (h *GameHandler) SubmitGuess(c *gin.Context) {
 		return
 	}
 
-	// Get game info
-	gameQuery := `SELECT mode, total_score, rounds_played, completed FROM games WHERE id = $1`
+	// Get game info including current_photo_id
+	gameQuery := `SELECT mode, total_score, rounds_played, completed, current_photo_id FROM games WHERE id = $1`
 	var mode, totalScore, roundsPlayed int
 	var completed bool
-	err := h.db.Pool.QueryRow(context.Background(), gameQuery, gameID).Scan(&mode, &totalScore, &roundsPlayed, &completed)
+	var currentPhotoID *string
+	err := h.db.Pool.QueryRow(context.Background(), gameQuery, gameID).Scan(&mode, &totalScore, &roundsPlayed, &completed, &currentPhotoID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
 		return
@@ -147,6 +145,12 @@ func (h *GameHandler) SubmitGuess(c *gin.Context) {
 
 	if completed {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "game already completed"})
+		return
+	}
+
+	// Validate that the submitted photo_id matches the assigned current photo
+	if currentPhotoID == nil || req.PhotoID != *currentPhotoID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid photo for current round"})
 		return
 	}
 
@@ -180,14 +184,26 @@ func (h *GameHandler) SubmitGuess(c *gin.Context) {
 		return
 	}
 
-	// Update game
-	var updateQuery string
+	// Update game with new state and next photo
 	if gameCompleted {
-		updateQuery = `UPDATE games SET total_score = $1, rounds_played = $2, completed = true, completed_at = $3 WHERE id = $4`
+		updateQuery := `UPDATE games SET total_score = $1, rounds_played = $2, completed = true, completed_at = $3, current_photo_id = NULL WHERE id = $4`
 		_, err = h.db.Pool.Exec(context.Background(), updateQuery, totalScore, roundsPlayed, time.Now(), gameID)
 	} else {
-		updateQuery = `UPDATE games SET total_score = $1, rounds_played = $2 WHERE id = $3`
-		_, err = h.db.Pool.Exec(context.Background(), updateQuery, totalScore, roundsPlayed, gameID)
+		// Get next photo (excluding already guessed photos)
+		nextPhotoQuery := `
+			SELECT id FROM photos
+			WHERE id NOT IN (SELECT photo_id FROM guesses WHERE game_id = $1)
+			ORDER BY RANDOM() LIMIT 1
+		`
+		var nextPhotoID string
+		err = h.db.Pool.QueryRow(context.Background(), nextPhotoQuery, gameID).Scan(&nextPhotoID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "no more photos available"})
+			return
+		}
+
+		updateQuery := `UPDATE games SET total_score = $1, rounds_played = $2, current_photo_id = $3 WHERE id = $4`
+		_, err = h.db.Pool.Exec(context.Background(), updateQuery, totalScore, roundsPlayed, nextPhotoID, gameID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update game"})
